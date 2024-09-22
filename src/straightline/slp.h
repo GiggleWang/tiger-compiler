@@ -126,7 +126,7 @@ public:
   NumExps的作用是提供表达式列表中表达式的总数
   */
   virtual int NumExps() const = 0;
-  virtual IntAndTable *Interp(Table *) const = 0;
+  // virtual IntAndTable *Interp(Table *) const = 0;
   virtual Table *printExpList(Table *) const = 0;
 };
 
@@ -136,7 +136,7 @@ public:
   // TODO: you'll have to add some definitions here (lab1).
   int MaxArgs() const override;
   int NumExps() const override;
-  IntAndTable *Interp(Table *) const override;
+  // IntAndTable *Interp(Table *) const override;
   Table *printExpList(Table*) const override;
 private:
   Exp *exp;
@@ -149,7 +149,7 @@ public:
   // TODO: you'll have to add some definitions here (lab1).
   int MaxArgs() const override;
   int NumExps() const override;
-  IntAndTable *Interp(Table *) const override;
+  // IntAndTable *Interp(Table *) const override;
   Table *printExpList(Table*) const override;
 private:
   Exp *exp;
