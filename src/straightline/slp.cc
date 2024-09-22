@@ -108,10 +108,12 @@ Table *A::PairExpList::printExpList(Table *t) const {
 }
 
 IntAndTable *A::PairExpList::Interp(Table *) const {
-
+  return NULL;
 }
 
-IntAndTable *A::LastExpList::Interp(Table *) const {}
+IntAndTable *A::LastExpList::Interp(Table *) const {
+  return NULL;
+}
 int Table::Lookup(const std::string &key) const {
   if (id == key) {
     return value;

@@ -24,12 +24,12 @@ check-image:
 
 
 docker-run: check-image
-	docker run -it --privileged --dns=223.5.5.5 \
+	docker run --platform linux/amd64 -it --privileged --dns=223.5.5.5 \
 		-v $(shell pwd):/home/stu/tiger-compiler $(IMAGE_NAME_FULL)
 	
 
 docker-run-backend: check-image
-	docker run -dt --privileged --dns=223.5.5.5 \
+	docker run --platform linux/amd64 -dt --privileged --dns=223.5.5.5 \
 		-v $(shell pwd):/home/stu/tiger-compiler $(IMAGE_NAME_FULL)
 
 transform:
