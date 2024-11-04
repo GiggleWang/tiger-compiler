@@ -51,29 +51,24 @@
 %type <exp> exp expseq op_exp if_exp for_exp while_exp call_exp record_exp
 %type <explist> actuals nonemptyactuals sequencing sequencing_exps
 %type <var> lvalue one oneormore
-%type <declist> decs
+%type <declist> decs decs_nonempty
 %type <dec> decs_nonempty_s vardec
-%type <efieldlist> rec
+%type <efieldlist> rec rec_nonempty
 %type <efield> rec_one
 %type <tydeclist> tydec
 %type <tydec> tydec_one
-%type <fieldlist> tyfields
+%type <fieldlist> tyfields tyfields_nonempty
 %type <field> tyfield
 %type <ty> ty
 %type <fundeclist> fundec
 %type <fundec> fundec_one
 
+
 %start program
 
 %%
 program:  exp  {absyn_tree_ = std::make_unique<absyn::AbsynTree>($1);};
-
-lvalue:
-  ID {$$ = new absyn::SimpleVar(scanner_.GetTokPos(), $1);}|
-  lvalue DOT ID {$$ = new absyn::FieldVar(scanner_.GetTokPos(),$1,$3);}|
-  lvalue LBRACK exp RBRACK {$$ = new absyn::SubscriptVar(scanner_.GetTokPos(), $1, $3);} | 
-  ID LBRACK exp RBRACK {$$ = new absyn::SubscriptVar(scanner_.GetTokPos(), new absyn::SimpleVar(scanner_.GetTokPos(), $1), $3);};
-
+// exp
 exp:
   INT {$$ = new absyn::IntExp(scanner_.GetTokPos(), $1);} |
   STRING {$$ = new absyn::StringExp(scanner_.GetTokPos(), $1);} |
@@ -88,6 +83,8 @@ exp:
   LPAREN RPAREN {$$ = new absyn::VoidExp(scanner_.GetTokPos());} |
   record_exp | if_exp | for_exp | while_exp | call_exp | op_exp;
 
+expseq:
+  sequencing_exps {$$ = new absyn::SeqExp(scanner_.GetTokPos(), $1);};
 
 record_exp:
   ID LBRACE RBRACE {$$ = new absyn::RecordExp(scanner_.GetTokPos(), $1, new absyn::EFieldList());} |
@@ -127,42 +124,96 @@ op_exp:
     $$ = new absyn::OpExp(scanner_.GetTokPos(), absyn::MINUS_OP, new absyn::IntExp(scanner_.GetTokPos(), 0), $2);
   };
 
-rec:
-  rec_one {$$ = new absyn::EFieldList($1);} |
-  rec_one COMMA rec {$$ = $3; $$->Prepend($1);};
 
-rec_one:
-  ID EQ exp {$$ = new absyn::EField($1, $3);};
+//explist
+actuals:
+  /* empty */ { $$ = nullptr; } |
+  nonemptyactuals { $$ = $1; };
 
-expseq:
-  sequencing_exps {$$ = new absyn::SeqExp(scanner_.GetTokPos(), $1);};
+nonemptyactuals:
+  exp { $$ = new absyn::ExpList($1); } |
+  exp COMMA nonemptyactuals { $$ = $3; $$->Prepend($1); };
 
 sequencing_exps:
-  exp {$$ = new absyn::ExpList($1);} |
-  exp COMMA sequencing_exps {$$ = $3; $$->Prepend($1);} |
-  exp SEMICOLON sequencing_exps {$$ = $3; $$->Prepend($1); };
+  exp { $$ = new absyn::ExpList($1); } |
+  exp COMMA sequencing_exps { $$ = $3; $$->Prepend($1); } |
+  exp SEMICOLON sequencing_exps { $$ = $3; $$->Prepend($1); } |
+  actuals { $$ = $1; };
 
+//var
+lvalue:
+  ID {$$ = new absyn::SimpleVar(scanner_.GetTokPos(), $1);}|
+  lvalue DOT ID {$$ = new absyn::FieldVar(scanner_.GetTokPos(),$1,$3);}|
+  lvalue LBRACK exp RBRACK {$$ = new absyn::SubscriptVar(scanner_.GetTokPos(), $1, $3);} | 
+  ID LBRACK exp RBRACK {$$ = new absyn::SubscriptVar(scanner_.GetTokPos(), new absyn::SimpleVar(scanner_.GetTokPos(), $1), $3);};
+
+//declist
 decs:
-  decs_nonempty_s {$$ = new absyn::DecList($1);} |
-  decs_nonempty_s decs {$$ = $2; $$->Prepend($1);} |
+  decs_nonempty { $$ = $1; }|
   vardec {$$ = new absyn::DecList($1);} |
   vardec decs {$$ = $2; $$->Prepend($1);};
 
+decs_nonempty:
+  decs_nonempty_s {$$ = new absyn::DecList($1);} |
+  decs_nonempty_s decs {$$ = $2; $$->Prepend($1);};
+
+//dec
 decs_nonempty_s:
   tydec {$$ = new absyn::TypeDec(scanner_.GetTokPos(), $1);} |
   fundec {$$ = new absyn::FunctionDec(scanner_.GetTokPos(), $1);};
 
+vardec:
+  VAR ID ASSIGN exp {$$ = new absyn::VarDec(scanner_.GetTokPos(), $2, nullptr, $4);} |
+  VAR ID COLON ID ASSIGN exp {$$ = new absyn::VarDec(scanner_.GetTokPos(), $2, $4, $6);};
+ 
+//efieldlist
+rec:
+  rec_nonempty { $$ = $1; } |
+  /* empty */ { $$ = nullptr; };
+
+rec_nonempty:
+  rec_one {$$ = new absyn::EFieldList($1);} |
+  rec_one COMMA rec {$$ = $3; $$->Prepend($1);};
+
+//efield
+rec_one:
+  ID EQ exp {$$ = new absyn::EField($1, $3);};
+
+//tydeclist
 tydec:
   TYPE tydec_one {$$ = new absyn::NameAndTyList($2);} |
   TYPE tydec_one tydec {$$ = $3; $$->Prepend($2);};
 
+//tydec
+tydec_one:
+  ID EQ ty {$$ = new absyn::NameAndTy($1, $3);};
+
+//fieldlist
+tyfields:
+  /* empty */ { $$ = nullptr; } |
+  tyfields_nonempty { $$ = $1; };
+
+tyfields_nonempty:
+  tyfield { $$ = new absyn::FieldList($1); } |
+  tyfield COMMA tyfields_nonempty { $$ = $3; $$->Prepend($1); };
+  
+//field
+tyfield:
+  ID COLON ID { $$ = new absyn::Field(scanner_.GetTokPos(), $1, $3); };
+
+
+//ty
+ty:
+  ARRAY OF ID {$$ = new absyn::ArrayTy(scanner_.GetTokPos(), $3);} |
+  ID {$$ = new absyn::NameTy(scanner_.GetTokPos(), $1);} |
+  LBRACE tyfields RBRACE {$$ = new absyn::RecordTy(scanner_.GetTokPos(), $2);};
+
+//fundeclist
 fundec:
   FUNCTION fundec_one {$$ = new absyn::FunDecList($2);} |
   FUNCTION fundec_one fundec {$$ = $3; $$->Prepend($2);};
 
-tydec_one:
-  ID EQ ty {$$ = new absyn::NameAndTy($1, $3);};
-
+//fundec
 fundec_one:
   ID LPAREN tyfields RPAREN COLON ID EQ exp {$$ = new absyn::FunDec(scanner_.GetTokPos(), $1, $3, $6, $8);} |
   ID LPAREN RPAREN COLON ID EQ exp {$$ = new absyn::FunDec(scanner_.GetTokPos(), $1, new absyn::FieldList(), $5, $7);} |
@@ -173,17 +224,4 @@ fundec_one:
   ID LPAREN tyfields RPAREN EQ LPAREN exp RPAREN {$$ = new absyn::FunDec(scanner_.GetTokPos(), $1, $3, nullptr, $7);} |
   ID LPAREN RPAREN EQ LPAREN exp RPAREN {$$ = new absyn::FunDec(scanner_.GetTokPos(), $1, new absyn::FieldList(), nullptr, $6);};
 
-ty:
-  ARRAY OF ID {$$ = new absyn::ArrayTy(scanner_.GetTokPos(), $3);} |
-  ID {$$ = new absyn::NameTy(scanner_.GetTokPos(), $1);} |
-  LBRACE tyfields RBRACE {$$ = new absyn::RecordTy(scanner_.GetTokPos(), $2);};
-
-tyfields:
-  ID COLON ID {$$ = new absyn::FieldList(new absyn::Field(scanner_.GetTokPos(), $1, $3));} |
-  ID COLON ID COMMA tyfields {$$ = $5; $$->Prepend(new absyn::Field(scanner_.GetTokPos(), $1, $3));};
-
-vardec:
-  VAR ID ASSIGN exp {$$ = new absyn::VarDec(scanner_.GetTokPos(), $2, nullptr, $4);} |
-  VAR ID COLON ID ASSIGN exp {$$ = new absyn::VarDec(scanner_.GetTokPos(), $2, $4, $6);};
- 
 
