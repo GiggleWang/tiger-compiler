@@ -49,8 +49,8 @@
 
 
 %type <exp> exp expseq op_exp if_exp for_exp while_exp call_exp record_exp
-%type <explist> actuals nonemptyactuals sequencing sequencing_exps
-%type <var> lvalue one oneormore
+%type <explist> actuals nonemptyactuals sequencing_exps
+%type <var> lvalue
 %type <declist> decs decs_nonempty
 %type <dec> decs_nonempty_s vardec
 %type <efieldlist> rec rec_nonempty
