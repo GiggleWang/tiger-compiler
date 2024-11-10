@@ -25,12 +25,21 @@ check-image:
 
 docker-run: check-image
 	docker run --platform linux/amd64 -it --privileged --dns=223.5.5.5 \
-		-v $(shell pwd):/home/stu/tiger-compiler $(IMAGE_NAME_FULL)
+		-v $(shell pwd):/home/stu/tiger-compiler --name tiger-compilers $(IMAGE_NAME_FULL)
 	
+compile:
+	mkdir -p build && cd build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
+	
+get-in-docker:
+	docker start tiger-compilers || true
+	docker exec -it tiger-compilers /bin/bash -c "cd /home/stu/tiger-compiler && exec /bin/bash"
 
+docker-restart:
+	docker start tiger-compilers || true
+	
 docker-run-backend: check-image
 	docker run --platform linux/amd64 -dt --privileged --dns=223.5.5.5 \
-		-v $(shell pwd):/home/stu/tiger-compiler $(IMAGE_NAME_FULL)
+		-v $(shell pwd):/home/stu/tiger-compiler --name tiger-compilers $(IMAGE_NAME_FULL)
 
 transform:
 	find src scripts testdata -type f | xargs -I % sh -c 'dos2unix -n % /tmp/tmp; mv -f /tmp/tmp % || true;'

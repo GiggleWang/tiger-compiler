@@ -54,7 +54,7 @@ enum Oper {
 class AbsynTree {
 public:
   AbsynTree() = delete;
-  AbsynTree(nullptr_t) = delete;
+  // AbsynTree(nullptr_t) = delete;
   explicit AbsynTree(absyn::Exp *root);
   AbsynTree(const AbsynTree &absyn_tree) = delete;
   AbsynTree(AbsynTree &&absyn_tree) = delete;
@@ -74,7 +74,7 @@ private:
  * Variables
  */
 
-class Var {
+class Var { // SimpleVar,FieldVar,SubscriptVar
 public:
   int pos_;
   virtual ~Var() = default;
@@ -87,9 +87,9 @@ protected:
   explicit Var(int pos) : pos_(pos) {}
 };
 
-class SimpleVar : public Var {
+class SimpleVar : public Var { // a
 public:
-  sym::Symbol *sym_;
+  sym::Symbol *sym_; // a
   SimpleVar(int pos, sym::Symbol *sym) : Var(pos), sym_(sym) {}
   ~SimpleVar() override;
 
@@ -98,10 +98,10 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class FieldVar : public Var {
+class FieldVar : public Var { // person.age
 public:
-  Var *var_;
-  sym::Symbol *sym_;
+  Var *var_;         // person
+  sym::Symbol *sym_; // age
 
   FieldVar(int pos, Var *var, sym::Symbol *sym)
       : Var(pos), var_(var), sym_(sym) {}
@@ -112,10 +112,10 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class SubscriptVar : public Var {
+class SubscriptVar : public Var { // array[index]
 public:
-  Var *var_;
-  Exp *subscript_;
+  Var *var_;       // array
+  Exp *subscript_; // index
 
   SubscriptVar(int pos, Var *var, Exp *exp)
       : Var(pos), var_(var), subscript_(exp) {}
@@ -143,9 +143,9 @@ protected:
   explicit Exp(int pos) : pos_(pos) {}
 };
 
-class VarExp : public Exp {
+class VarExp : public Exp { // x , array[index] , person.age
 public:
-  Var *var_;
+  Var *var_; // x , array[index] , person.age
 
   VarExp(int pos, Var *var) : Exp(pos), var_(var) {}
   ~VarExp() override;
@@ -155,7 +155,7 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class NilExp : public Exp {
+class NilExp : public Exp { //空
 public:
   explicit NilExp(int pos) : Exp(pos) {}
   ~NilExp() override;
@@ -165,9 +165,9 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class IntExp : public Exp {
+class IntExp : public Exp { // 12345
 public:
-  int val_;
+  int val_; // 12345
 
   IntExp(int pos, int val) : Exp(pos), val_(val) {}
   ~IntExp() override;
@@ -177,9 +177,9 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class StringExp : public Exp {
+class StringExp : public Exp { //"hello,world!"
 public:
-  std::string str_;
+  std::string str_; //"hello,world!"
 
   StringExp(int pos, std::string *str) : Exp(pos), str_(*str) {}
   ~StringExp() override;
@@ -189,10 +189,10 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class CallExp : public Exp {
+class CallExp : public Exp { // func(x,y)
 public:
-  sym::Symbol *func_;
-  ExpList *args_;
+  sym::Symbol *func_; // func
+  ExpList *args_;     // x,y
 
   CallExp(int pos, sym::Symbol *func, ExpList *args)
       : Exp(pos), func_(func), args_(args) {
@@ -205,10 +205,10 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class OpExp : public Exp {
+class OpExp : public Exp { // x+y
 public:
   Oper oper_;
-  Exp *left_, *right_;
+  Exp *left_, *right_; // x //y
 
   OpExp(int pos, Oper oper, Exp *left, Exp *right)
       : Exp(pos), oper_(oper), left_(left), right_(right) {}
@@ -219,10 +219,10 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class RecordExp : public Exp {
+class RecordExp : public Exp { // Person { name = "Alice", age = 30 }
 public:
-  sym::Symbol *typ_;
-  EFieldList *fields_;
+  sym::Symbol *typ_;   // Person
+  EFieldList *fields_; // name = "Alice", age = 30
 
   RecordExp(int pos, sym::Symbol *typ, EFieldList *fields)
       : Exp(pos), typ_(typ), fields_(fields) {}
@@ -233,9 +233,9 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class SeqExp : public Exp {
+class SeqExp : public Exp { //{ expr1; expr2; expr3 }
 public:
-  ExpList *seq_;
+  ExpList *seq_; // expr1; expr2; expr3
 
   SeqExp(int pos, ExpList *seq) : Exp(pos), seq_(seq) {}
   ~SeqExp() override;
@@ -245,10 +245,10 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class AssignExp : public Exp {
+class AssignExp : public Exp { // x = a + b
 public:
-  Var *var_;
-  Exp *exp_;
+  Var *var_; // x
+  Exp *exp_; // a + b
 
   AssignExp(int pos, Var *var, Exp *exp) : Exp(pos), var_(var), exp_(exp) {}
   ~AssignExp() override;
@@ -258,9 +258,10 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class IfExp : public Exp {
+class IfExp : public Exp { // if (x > 0) then { y = 1; } else { y = -1; }
 public:
-  Exp *test_, *then_, *elsee_;
+  Exp *test_, *then_,
+      *elsee_; // test_ : x > 0    // then_ : y = 1   // elsee_ : y = -1
 
   IfExp(int pos, Exp *test, Exp *then, Exp *elsee)
       : Exp(pos), test_(test), then_(then), elsee_(elsee) {}
@@ -271,9 +272,9 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class WhileExp : public Exp {
+class WhileExp : public Exp { // while (x > 0) do x = x - 1
 public:
-  Exp *test_, *body_;
+  Exp *test_, *body_; // test_ : x > 0    // body_ : x = x - 1
 
   WhileExp(int pos, Exp *test, Exp *body)
       : Exp(pos), test_(test), body_(body) {}
@@ -284,10 +285,10 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class ForExp : public Exp {
+class ForExp : public Exp { // for i := 1 to 10 do { sum = sum + i; }
 public:
-  sym::Symbol *var_;
-  Exp *lo_, *hi_, *body_;
+  sym::Symbol *var_;      // i
+  Exp *lo_, *hi_, *body_; // 1 10 sum = sum + i;
   bool escape_;
 
   ForExp(int pos, sym::Symbol *var, Exp *lo, Exp *hi, Exp *body)
@@ -309,10 +310,10 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class LetExp : public Exp {
+class LetExp : public Exp { // let var x := 10 in x + 1 end
 public:
-  DecList *decs_;
-  Exp *body_;
+  DecList *decs_; // var x := 10
+  Exp *body_;     // x + 1
 
   LetExp(int pos, DecList *decs, Exp *body)
       : Exp(pos), decs_(decs), body_(body) {}
@@ -323,10 +324,10 @@ public:
                        err::ErrorMsg *errormsg) const override;
 };
 
-class ArrayExp : public Exp {
+class ArrayExp : public Exp { // int[10] of 0
 public:
-  sym::Symbol *typ_;
-  Exp *size_, *init_;
+  sym::Symbol *typ_;  // int
+  Exp *size_, *init_; // 10 0
 
   ArrayExp(int pos, sym::Symbol *typ, Exp *size, Exp *init)
       : Exp(pos), typ_(typ), size_(size), init_(init) {}
@@ -351,7 +352,7 @@ public:
  * Declarations
  */
 
-class Dec {
+class Dec { // FunctionDec,VarDec,TypeDec
 public:
   int pos_;
   virtual ~Dec() = default;
@@ -366,7 +367,8 @@ protected:
 class FunctionDec : public Dec {
 public:
   FunDecList *functions_;
-
+  // function foo(x: int): int = x + 1
+  // function bar(y: string): string = y + "!"
   FunctionDec(int pos, FunDecList *functions)
       : Dec(pos), functions_(functions) {}
   ~FunctionDec() override;
@@ -376,12 +378,12 @@ public:
                   err::ErrorMsg *errormsg) const override;
 };
 
-class VarDec : public Dec {
+class VarDec : public Dec { // var x: int := 10
 public:
-  sym::Symbol *var_;
-  sym::Symbol *typ_;
-  Exp *init_;
-  bool escape_;
+  sym::Symbol *var_; // x
+  sym::Symbol *typ_; // int
+  Exp *init_;        // 10
+  bool escape_;      //标记变量是否会逃逸到外层作用域。
 
   VarDec(int pos, sym::Symbol *var, sym::Symbol *typ, Exp *init)
       : Dec(pos), var_(var), typ_(typ), init_(init), escape_(true) {}
@@ -460,10 +462,10 @@ public:
  * Linked lists and nodes of lists
  */
 
-class Field {
+class Field { // name: string
 public:
   int pos_;
-  sym::Symbol *name_, *typ_;
+  sym::Symbol *name_, *typ_; // name string
   bool escape_;
 
   Field(int pos, sym::Symbol *name, sym::Symbol *typ)
@@ -472,7 +474,7 @@ public:
   void Print(FILE *out, int d) const;
 };
 
-class FieldList {
+class FieldList { //{name: string;age : int}
 public:
   FieldList() = default;
   explicit FieldList(Field *field) : field_list_({field}) { assert(field); }
@@ -510,13 +512,13 @@ private:
   std::list<Exp *> exp_list_;
 };
 
-class FunDec {
+class FunDec { // function foo(x: int, y: string): int = x + 1
 public:
   int pos_;
-  sym::Symbol *name_;
-  FieldList *params_;
-  sym::Symbol *result_;
-  Exp *body_;
+  sym::Symbol *name_;   // foo
+  FieldList *params_;   //{x: int, y: string}
+  sym::Symbol *result_; // int
+  Exp *body_;           // x + 1
 
   FunDec(int pos, sym::Symbol *name, FieldList *params, sym::Symbol *result,
          Exp *body)
@@ -528,6 +530,8 @@ public:
 };
 
 class FunDecList {
+  // function foo(x: int): int = x + 1
+  // function bar(y: string): string = y + "!"
 public:
   explicit FunDecList(FunDec *fun_dec) : fun_dec_list_({fun_dec}) {
     assert(fun_dec);
@@ -562,10 +566,10 @@ private:
   std::list<Dec *> dec_list_;
 };
 
-class NameAndTy {
+class NameAndTy { // type alias = int
 public:
-  sym::Symbol *name_;
-  Ty *ty_;
+  sym::Symbol *name_; // alias
+  Ty *ty_;            // int
 
   NameAndTy(sym::Symbol *name, Ty *ty) : name_(name), ty_(ty) {}
 
