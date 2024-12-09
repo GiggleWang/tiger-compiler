@@ -211,24 +211,19 @@ type::Ty *WhileExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
     errormsg->Error(test_->pos_, "integer required");
     return type::VoidTy::Instance();
   }
-  venv->BeginScope();
-  tenv->BeginScope();
   type::Ty *body_type =
-      this->body_->SemAnalyze(venv, tenv, labelcount, errormsg);
+      this->body_->SemAnalyze(venv, tenv, labelcount + 1, errormsg);
   if (typeid(*body_type) != typeid(type::VoidTy)) {
     errormsg->Error(body_->pos_, "while body must produce no value");
     return type::VoidTy::Instance();
   }
-  venv->EndScope();
-  tenv->EndScope();
   return type::VoidTy::Instance();
 }
 
 type::Ty *ForExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                              int labelcount, err::ErrorMsg *errormsg) const {
   venv->BeginScope();
-  tenv->BeginScope();
-  venv->Enter(this->var_, new env::VarEntry(type::IntTy::Instance(), true));
+
   type::Ty *lo_type =
       this->lo_->SemAnalyze(venv, tenv, labelcount, errormsg)->ActualTy();
   type::Ty *hi_type =
@@ -240,16 +235,16 @@ type::Ty *ForExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
   if (typeid(*hi_type) != typeid(type::IntTy)) {
     errormsg->Error(hi_->pos_, "for exp's range type is not integer");
   }
+  venv->Enter(this->var_, new env::VarEntry(type::IntTy::Instance(), true));
   type::Ty *body_type =
-      this->body_->SemAnalyze(venv, tenv, labelcount, errormsg)->ActualTy();
+      this->body_->SemAnalyze(venv, tenv, labelcount + 1, errormsg)->ActualTy();
   venv->EndScope();
-  tenv->EndScope();
   return type::VoidTy::Instance();
 }
 
 type::Ty *BreakExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                                int labelcount, err::ErrorMsg *errormsg) const {
-  if (labelcount != -1) {
+  if (labelcount == 0) {
     errormsg->Error(pos_, "break is not inside any loop");
   }
   return type::VoidTy::Instance();
@@ -381,12 +376,12 @@ void VarDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
 void TypeDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
                          err::ErrorMsg *errormsg) const {
   const auto &name_and_type_list = this->types_->GetList();
-  //检查是否有重复的名字
+  // 检查是否有重复的名字
   std::list<std::string> name_list;
   for (NameAndTy *name_and_ty : name_and_type_list) {
     if (std::find(name_list.begin(), name_list.end(),
                   name_and_ty->name_->Name()) != name_list.end()) {
-      //存在相同的名称
+      // 存在相同的名称
       errormsg->Error(name_and_ty->ty_->pos_, "two types have the same name");
       return;
     }
@@ -395,7 +390,7 @@ void TypeDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
                 new type::NameTy(name_and_ty->name_, nullptr));
   }
 
-  //更新定义
+  // 更新定义
   for (NameAndTy *name_and_ty : name_and_type_list) {
     type::Ty *current_type = tenv->Look(name_and_ty->name_);
     if (!current_type) {
@@ -408,7 +403,7 @@ void TypeDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
     tenv->Set(name_and_ty->name_, name_type);
   }
 
-  //检查是否存在非法环
+  // 检查是否存在非法环
   for (auto name_and_ty : this->types_->GetList()) {
     auto current =
         static_cast<type::NameTy *>(tenv->Look(name_and_ty->name_))->ty_;
