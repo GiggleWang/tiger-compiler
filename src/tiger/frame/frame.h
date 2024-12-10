@@ -15,7 +15,8 @@
 #include <llvm/IR/Value.h>
 
 namespace frame {
-
+class Frame;
+class InFrameAccess;
 class RegManager {
 public:
   RegManager() : temp_map_(temp::Map::Empty()) {}
@@ -23,6 +24,7 @@ public:
   temp::Temp *GetRegister(int regno) { return regs_[regno]; }
 
   /**
+   * 获取除了RSI之外的所有寄存器
    * Get general-purpose registers except RSI
    * NOTE: returned temp list should be in the order of calling convention
    * @return general-purpose registers
@@ -30,6 +32,7 @@ public:
   [[nodiscard]] virtual temp::TempList *Registers() = 0;
 
   /**
+   * 获取可以用来存放参数的寄存器
    * Get registers which can be used to hold arguments
    * NOTE: returned temp list must be in the order of calling convention
    * @return argument registers
@@ -37,6 +40,7 @@ public:
   [[nodiscard]] virtual temp::TempList *ArgRegs() = 0;
 
   /**
+   * 获取caller-saved寄存器
    * Get caller-saved registers
    * NOTE: returned registers must be in the order of calling convention
    * @return caller-saved registers
@@ -44,6 +48,7 @@ public:
   [[nodiscard]] virtual temp::TempList *CallerSaves() = 0;
 
   /**
+   * 获取caller-saved寄存器
    * Get callee-saved registers
    * NOTE: returned registers must be in the order of calling convention
    * @return callee-saved registers
@@ -51,6 +56,7 @@ public:
   [[nodiscard]] virtual temp::TempList *CalleeSaves() = 0;
 
   /**
+   * 获取返回接收器寄存器
    * Get return-sink registers
    * @return return-sink registers
    */
@@ -72,12 +78,15 @@ protected:
 class Access {
 public:
   /* TODO: Put your lab5-part1 code here */
+  // 生成访问这个变量的 LLVM IR 代码
+  virtual llvm::Value *ToLLVMVal(llvm::Value *frame_addr_ptr) = 0;
 
   virtual ~Access() = default;
 };
 
 class Frame {
 public:
+  // outgo区域是在当前函数的栈帧中预留的一块空间，专门用于为即将调用的其他函数准备参数。
   int outgo_size_;
   int offset_;
   temp::Label *name_;
@@ -90,14 +99,32 @@ public:
       : outgo_size_(outgo_size), offset_(offset), name_(name),
         formals_(formals) {}
 
+  // 获取函数标签字符串
   [[nodiscard]] virtual std::string GetLabel() const = 0;
+  // 获取函数名标签对象
   [[nodiscard]] virtual temp::Label *Name() const = 0;
+  // 获取形参列表
   [[nodiscard]] virtual std::list<frame::Access *> *Formals() const = 0;
+  /**
+   * @brief 在当前栈帧中为本地变量分配空间
+   *
+   * @param escape 变量是否需要逃逸处理
+   *              - true：变量可能被其他函数访问，需要在内存（栈）中分配
+   *              - false：变量仅在当前函数中使用，可以分配在寄存器中
+   *
+   * @return frame::Access* 返回一个 Access 对象指针，表示如何访问这个变量
+   */
   virtual frame::Access *AllocLocal(bool escape) = 0;
+  // 分配外部调用参数空间
   virtual void AllocOutgoSpace(int size) = 0;
-  int calculateActualFramesize() {
-    return (-offset_ + outgo_size_) + 8;
-  }
+  /**
+   * @brief 计算整个栈帧所需的总空间
+   * -offset_：本地变量区域大小
+   * outgo_size_：参数传递区域大小
+   * +8：返回地址
+   * @return int 整个栈帧所需的总空间
+   */
+  int calculateActualFramesize() { return (-offset_ + outgo_size_) + 8; }
 };
 
 /**

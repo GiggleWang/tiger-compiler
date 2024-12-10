@@ -84,3 +84,9 @@ register:
 format:
 	find . \( -name "*.h" -o -iname "*.cc" \) | xargs clang-format-14 -i -style=file
 
+.PHONY: test
+test: $(word 2,$(MAKECMDGOALS))
+	cd build && make test_translate_llvm && /home/stu/tiger-compiler/build/test_translate_llvm /home/stu/tiger-compiler/testdata/lab5or6/testcases/$(word 2,$(MAKECMDGOALS)).tig
+
+%:
+	@:
