@@ -35,3 +35,6 @@ _deps
 
 # llvm source
 testdata/lab5or6/testcases/*.ll
+
+# environment file
+tigerlabs_env_v2.tar
