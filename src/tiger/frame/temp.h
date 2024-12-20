@@ -51,8 +51,8 @@ public:
   static Map *LayerMap(Map *over, Map *under);
 
 private:
-  tab::Table<Temp, std::string> *tab_;
-  Map *under_;
+  tab::Table<Temp, std::string> *tab_; // Temp:int类型的id std::string类型的名称
+  Map *under_;                         //下一层的map
 
   Map() : tab_(new tab::Table<Temp, std::string>()), under_(nullptr) {}
   Map(tab::Table<Temp, std::string> *tab, Map *under)

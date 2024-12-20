@@ -38,3 +38,5 @@ testdata/lab5or6/testcases/*.ll
 
 # python cache
 scripts/lab5_test/__pycache__/
+# environment file
+tigerlabs_env_v2.tar

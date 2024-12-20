@@ -8,7 +8,6 @@
 #include "tiger/env/env.h"
 #include "tiger/errormsg/errormsg.h"
 #include "tiger/frame/frame.h"
-#include "tiger/semant/types.h"
 
 namespace tr {
 
@@ -35,10 +34,16 @@ public:
   Level(frame::Frame *frame, Level *parent) : frame_(frame), parent_(parent) {}
 
   llvm::Value *get_sp() { return frame_->sp; }
-  
   void set_sp(llvm::Value *sp) { frame_->sp = sp; }
 
   /* TODO: Put your lab5-part1 code here */
+  Level *NewLevel(tr::Level *parent, temp::Label *name,
+                  std::list<bool> formals) {
+    formals.push_front(true);
+    frame::Frame *new_frame = frame::NewFrame(name, formals);
+    Level *new_level = new Level(new_frame, this);
+    return new_level;
+  }
 };
 
 class ProgTr {
