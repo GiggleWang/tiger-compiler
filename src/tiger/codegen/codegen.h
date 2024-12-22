@@ -46,7 +46,7 @@ public:
   // check if the value is %sp in llvm
   bool IsRsp(llvm::Value *val, std::string_view function_name) const {
     // TODO: your lab5 code here
-    if(val->getName() == std::string(function_name) + "_sp"){
+    if (val->getName() == std::string(function_name) + "_sp") {
       return true;
     }
     return false;
@@ -70,7 +70,20 @@ private:
   temp::Temp *phi_temp_;
   std::unique_ptr<canon::Traces> traces_;
   std::unique_ptr<AssemInstr> assem_instr_;
-  void load_codegen(assem::InstrList *instr_list,llvm::LoadInst &inst);
+  void load_codegen(assem::InstrList *instr_list, llvm::LoadInst *inst);
+  void store_codegen(assem::InstrList *instr_list, llvm::StoreInst *inst);
+  void add_sub_mul_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
+  void sdiv_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
+  void ptrtoint_codegen(assem::InstrList *instr_list, llvm::PtrToIntInst *inst);
+  void inttoptr_codegen(assem::InstrList *instr_list, llvm::IntToPtrInst *inst);
+  void getelementptr_codegen(assem::InstrList *instr_list,
+                             llvm::LoadInst &inst);
+  void zext_codegen(assem::InstrList *instr_list, llvm::ZExtInst *inst);
+  void call_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
+  void ret_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
+  void br_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
+  void icmp_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
+  void phi_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
 };
 
 } // namespace cg

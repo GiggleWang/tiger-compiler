@@ -134,7 +134,28 @@ frame::Frame *NewFrame(temp::Label *name, std::list<bool> formals) {
  */
 assem::InstrList *ProcEntryExit1(std::string_view function_name,
                                  assem::InstrList *body) {
-  // TODO: your lab5 code here
+  // 在函数开始报错callee-saved 寄存器 并在函数结束时移动回去
+  // 保存 callee-saved 寄存器
+  auto regs = reg_manager->CalleeSaves();
+  temp::TempList *saved_temps = new temp::TempList();
+
+  for (auto reg : regs->GetList()) {
+    auto temp = temp::TempFactory::NewTemp();
+    body->Insert(body->GetList().begin(),
+                 new assem::MoveInstr("movq `s0, `d0", new temp::TempList(temp),
+                                      new temp::TempList(reg)));
+    saved_temps->Append(temp);
+  }
+  // .tigermain_end:
+  body->Append(new assem::LabelInstr(std::string(function_name) + "_end"));
+
+  // 恢复 callee-saved 寄存器
+  auto saved_iter = saved_temps->GetList().rbegin();
+  for (auto reg = regs->GetList().rbegin(); reg != regs->GetList().rend();
+       ++reg, ++saved_iter) {
+    body->Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList(*reg),
+                                      new temp::TempList(*saved_iter)));
+  }
   return body;
 }
 
@@ -162,6 +183,19 @@ assem::Proc *ProcEntryExit3(std::string_view function_name,
   std::string epilogue = "";
 
   // TODO: your lab5 code here
+  // 将函数标签和栈指针调整移到prologue
+  // tigermain:
+  // subq $tigermain_framesize_local, %rsp
+  prologue += std::string(function_name) + ":\n";
+  prologue +=
+      "subq $" + std::string(function_name) + "_framesize_local, %rsp\n";
+
+  // 将栈指针恢复和返回指令移到epilogue
+  // addq $try_framesize_local, %rsp
+  // retq
+  epilogue +=
+      "addq $" + std::string(function_name) + "_framesize_local, %rsp\n";
+  epilogue += "retq\n";
   return new assem::Proc(prologue, body, epilogue);
 }
 
