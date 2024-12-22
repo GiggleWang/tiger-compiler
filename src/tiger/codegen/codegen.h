@@ -4,6 +4,7 @@
 #include "tiger/canon/canon.h"
 #include "tiger/codegen/assem.h"
 #include "tiger/frame/x64frame.h"
+#include <llvm-14/llvm/IR/Instructions.h>
 
 // Forward Declarations
 namespace frame {
@@ -45,6 +46,9 @@ public:
   // check if the value is %sp in llvm
   bool IsRsp(llvm::Value *val, std::string_view function_name) const {
     // TODO: your lab5 code here
+    if(val->getName() == std::string(function_name) + "_sp"){
+      return true;
+    }
     return false;
   }
 
@@ -66,6 +70,7 @@ private:
   temp::Temp *phi_temp_;
   std::unique_ptr<canon::Traces> traces_;
   std::unique_ptr<AssemInstr> assem_instr_;
+  void load_codegen(assem::InstrList *instr_list,llvm::LoadInst &inst);
 };
 
 } // namespace cg

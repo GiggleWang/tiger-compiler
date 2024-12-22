@@ -2,6 +2,8 @@
 
 #include <cassert>
 #include <iostream>
+#include <llvm-14/llvm/IR/Instruction.h>
+#include <llvm-14/llvm/IR/Instructions.h>
 #include <sstream>
 
 extern frame::RegManager *reg_manager;
@@ -109,8 +111,67 @@ void AssemInstr::Print(FILE *out, temp::Map *map) const {
 void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                        std::string_view function_name, llvm::BasicBlock *bb) {
   // TODO: your lab5 code here
-  throw std::runtime_error(std::string("Unknown instruction: ") +
-                           inst.getOpcodeName());
+  auto op_code = inst.getOpcode();
+  switch (inst.getOpcode()) {
+  case llvm::Instruction::Load: {
+    this->load_codegen(instr_list, llvm::cast<llvm::LoadInst>(inst));
+    break;
+  }
+  case llvm::Instruction::Add: {
+    break;
+  }
+  case llvm::Instruction::Sub: {
+    break;
+  }
+  case llvm::Instruction::Mul: {
+    break;
+  }
+  case llvm::Instruction::SDiv: {
+    break;
+  }
+  case llvm::Instruction::PtrToInt: {
+    break;
+  }
+  case llvm::Instruction::IntToPtr: {
+    break;
+  }
+  case llvm::Instruction::GetElementPtr: {
+    break;
+  }
+  case llvm::Instruction::Store: {
+    break;
+  }
+  case llvm::Instruction::BitCast: {
+    break;
+  }
+  case llvm::Instruction::ZExt: {
+    break;
+  }
+  case llvm::Instruction::Call: {
+    break;
+  }
+  case llvm::Instruction::Ret: {
+    break;
+  }
+  case llvm::Instruction::Br: {
+    break;
+  }
+  case llvm::Instruction::ICmp: {
+    break;
+  }
+  case llvm::Instruction::PHI: {
+    break;
+  }
+  default:
+    std::cout << inst.getOpcodeName() << std::endl;
+  }
+
+  // throw std::runtime_error(std::string("Unknown instruction: ") +
+  //                          inst.getOpcodeName());
+}
+
+void CodeGen::load_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {
+
 }
 
 } // namespace cg
