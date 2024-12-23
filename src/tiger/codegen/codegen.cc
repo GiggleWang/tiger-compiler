@@ -117,37 +117,6 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
   // TODO: your lab5 code here
   auto op_code = inst.getOpcode();
   switch (inst.getOpcode()) {
-  case llvm::Instruction::GetElementPtr: {
-    llvm::GetElementPtrInst *gep_inst =
-        llvm::dyn_cast<llvm::GetElementPtrInst>(&inst);
-    temp::Temp *temp;
-
-    instr_list->Append(new assem::MoveInstr(
-        "movq `s0,`d0", new temp::TempList(temp_map_->find(gep_inst)->second),
-        new temp::TempList(temp_map_->find(gep_inst->getOperand(0))->second)));
-    for (int i = 1; i < inst.getNumOperands(); i++) {
-      temp = temp::TempFactory::NewTemp();
-
-      if (llvm::ConstantInt *constant_int =
-              llvm::dyn_cast<llvm::ConstantInt>(inst.getOperand(i))) {
-        instr_list->Append(new assem::MoveInstr(
-            "movq $" + std::to_string(constant_int->getSExtValue()) + ",`d0",
-            new temp::TempList(temp), new temp::TempList()));
-      } else {
-        instr_list->Append(new assem::MoveInstr(
-            "movq `s0,`d0", new temp::TempList(temp),
-            new temp::TempList(
-                temp_map_->find(gep_inst->getOperand(i))->second)));
-      }
-      instr_list->Append(
-          new assem::OperInstr("imulq $8,`d0", new temp::TempList(temp),
-                               new temp::TempList(temp), nullptr));
-    }
-    instr_list->Append(new assem::OperInstr(
-        "addq `s0,`d0", new temp::TempList(temp_map_->find(gep_inst)->second),
-        new temp::TempList({temp, temp_map_->find(gep_inst)->second}),
-        nullptr));
-  } break;
   case llvm::Instruction::Call: {
     llvm::Function *func =
         llvm::dyn_cast<llvm::CallInst>(&inst)->getCalledFunction();
@@ -215,39 +184,6 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
         "movq `s0,`d0", new temp::TempList(temp_map_->find(&inst)->second),
         new temp::TempList(
             reg_manager->GetRegister(frame::X64RegManager::Reg::RAX))));
-  } break;
-  case llvm::Instruction::Ret: {
-    llvm::ReturnInst *return_inst = llvm::dyn_cast<llvm::ReturnInst>(&inst);
-
-    if (inst.getNumOperands() > 0) {
-      llvm::Value *val = inst.getOperand(0);
-      if (llvm::ConstantInt *constInt =
-              llvm::dyn_cast<llvm::ConstantInt>(val)) {
-        instr_list->Append(new assem::MoveInstr(
-            "movq $" + std::to_string(constInt->getSExtValue()) + ",%rax",
-            new temp::TempList(
-                reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)),
-            new temp::TempList()));
-      } else if (llvm::dyn_cast<llvm::Instruction>(val)) {
-        instr_list->Append(new assem::MoveInstr(
-            "movq `s0,%rax",
-            new temp::TempList(
-                reg_manager->GetRegister(frame::X64RegManager::Reg::RAX)),
-            new temp::TempList(temp_map_->find(val)->second)));
-      }
-    }
-    instr_list->Append(new assem::MoveInstr(
-        "movq $" +
-            std::to_string(bb_map_->find(return_inst->getParent())->second) +
-            ",`d0",
-        new temp::TempList(phi_temp_), new temp::TempList()));
-
-    assem::Targets *targets = new assem::Targets(
-        new std::vector<temp::Label *>({temp::LabelFactory::NamedLabel(
-            std::string(return_inst->getFunction()->getName()) + "_end")}));
-    instr_list->Append(new assem::OperInstr(
-        "jmp " + std::string(return_inst->getFunction()->getName()) + "_end",
-        new temp::TempList(), new temp::TempList(), targets));
   } break;
   case llvm::Instruction::Br: {
     llvm::BranchInst *branch_inst = llvm::dyn_cast<llvm::BranchInst>(&inst);
@@ -413,9 +349,54 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                            llvm::dyn_cast<llvm::IntToPtrInst>(&inst));
     break;
   }
-  // case llvm::Instruction::GetElementPtr: {
-  //   break;
-  // }
+  case llvm::Instruction::GetElementPtr: {
+    llvm::GetElementPtrInst *gep_inst =
+        llvm::dyn_cast<llvm::GetElementPtrInst>(&inst);
+    temp::Temp *final_temp;
+    auto dst_value = temp_map_->find(gep_inst)->second;
+    auto basic_value = temp_map_->find(gep_inst->getOperand(0))->second;
+    auto dst_temp_list = new temp::TempList(dst_value);
+    auto basic_temp_list = new temp::TempList(basic_value);
+    auto move_instr =
+        new assem::MoveInstr("movq `s0,`d0", dst_temp_list, basic_temp_list);
+    instr_list->Append(move_instr);
+    int scale_factor = 8; // 初始为元素大小
+    llvm::Type *current_type =
+        gep_inst->getPointerOperandType()->getPointerElementType();
+
+    for (int i = 1; i < gep_inst->getNumOperands(); i++) {
+      auto temp = temp::TempFactory::NewTemp();
+
+      // 加载索引值
+      if (llvm::ConstantInt *constant_int =
+              llvm::dyn_cast<llvm::ConstantInt>(gep_inst->getOperand(i))) {
+        instr_list->Append(new assem::MoveInstr(
+            "movq $" + std::to_string(constant_int->getSExtValue()) + ",`d0",
+            new temp::TempList(temp), new temp::TempList()));
+      } else {
+        instr_list->Append(new assem::MoveInstr(
+            "movq `s0,`d0", new temp::TempList(temp),
+            new temp::TempList(
+                temp_map_->find(gep_inst->getOperand(i))->second)));
+      }
+
+      // 动态调整 scale_factor
+      if (auto *array_type = llvm::dyn_cast<llvm::ArrayType>(current_type)) {
+        scale_factor *= array_type->getNumElements(); // 当前维度的元素数量
+        current_type = array_type->getElementType(); // 更新为下一层类型
+      }
+
+      instr_list->Append(new assem::OperInstr(
+          "imulq $" + std::to_string(scale_factor) + ",`d0",
+          new temp::TempList(temp), new temp::TempList(temp), nullptr));
+      final_temp = temp;
+    }
+    instr_list->Append(new assem::OperInstr(
+        "addq `s0,`d0", new temp::TempList(temp_map_->find(gep_inst)->second),
+        new temp::TempList({final_temp, temp_map_->find(gep_inst)->second}),
+        nullptr));
+    break;
+  }
   case llvm::Instruction::Store: {
     this->store_codegen(instr_list, llvm::dyn_cast<llvm::StoreInst>(&inst));
     break;
@@ -427,9 +408,11 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
   // case llvm::Instruction::Call: {
   //   break;
   // }
-  // case llvm::Instruction::Ret: {
-  //   break;
-  // }
+  case llvm::Instruction::Ret: {
+    this->ret_codegen(instr_list, llvm::dyn_cast<llvm::ReturnInst>(&inst),
+                      function_name, bb);
+    break;
+  }
   // case llvm::Instruction::Br: {
   //   break;
   // }
@@ -437,9 +420,10 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
     this->icmp_codegen(instr_list, llvm::dyn_cast<llvm::ICmpInst>(&inst));
     break;
   }
-  // case llvm::Instruction::PHI: {
-  //   break;
-  // }
+    // case llvm::Instruction::PHI: {
+    //   break;
+    // }
+
   default:
     std::cout << inst.getOpcodeName() << std::endl;
     throw std::runtime_error(std::string("Unknown instruction: ") +
@@ -649,9 +633,6 @@ void CodeGen::inttoptr_codegen(assem::InstrList *instr_list,
                                           new temp::TempList(dst->second),
                                           new temp::TempList(src->second)));
 }
-
-void CodeGen::getelementptr_codegen(assem::InstrList *instr_list,
-                                    llvm::LoadInst &inst) {}
 void CodeGen::zext_codegen(assem::InstrList *instr_list, llvm::ZExtInst *inst) {
   // %result = zext i1 %bool_val to i32 => movq %source, %dest
   instr_list->Append(new assem::MoveInstr(
@@ -689,24 +670,18 @@ void CodeGen::ret_codegen(assem::InstrList *instr_list, llvm::ReturnInst *inst,
     instr_list->Append(
         new assem::MoveInstr("movq " + src_str + ",`d0", dst_list, src_list));
   }
-
-  auto phi_temps = std::make_unique<temp::TempList>(phi_temp_);
-
-  // Add move instruction for basic block mapping
-  auto move_instr = std::make_unique<assem::MoveInstr>(
+  instr_list->Append(new assem::MoveInstr(
       "movq $" + std::to_string(bb_map_->at(inst->getParent())) + ",`d0",
-      phi_temps.get(), new temp::TempList());
-  instr_list->Append(move_instr.release());
-
-  // Create label for function end
-  std::string end_label = std::string(function_name) + "_end";
+      new temp::TempList(phi_temp_), new temp::TempList()));
+  std::string end_label_name = std::string(function_name) + "_end";
   auto target_labels =
-      new std::vector<temp::Label *>{temp::LabelFactory::NamedLabel(end_label)};
-  // Add jump instruction to function end
-  auto jump_instr = std::make_unique<assem::OperInstr>(
-      "jmp " + end_label, new temp::TempList(), new temp::TempList(),
-      new assem::Targets(target_labels));
-  instr_list->Append(jump_instr.release());
+      std::make_unique<std::vector<temp::Label *>>(std::vector<temp::Label *>{
+          temp::LabelFactory::NamedLabel(end_label_name)});
+  std::string jmp_instr_str = "jmp " + end_label_name;
+  auto jmp_instr = std::make_unique<assem::OperInstr>(
+      jmp_instr_str, new temp::TempList(), new temp::TempList(),
+      new assem::Targets(target_labels.release()));
+  instr_list->Append(jmp_instr.release());
 }
 void CodeGen::br_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {}
 void CodeGen::icmp_codegen(assem::InstrList *instr_list, llvm::ICmpInst *inst) {

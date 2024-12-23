@@ -79,12 +79,10 @@ private:
                    std::string_view function_name);
   void ptrtoint_codegen(assem::InstrList *instr_list, llvm::PtrToIntInst *inst);
   void inttoptr_codegen(assem::InstrList *instr_list, llvm::IntToPtrInst *inst);
-  void getelementptr_codegen(assem::InstrList *instr_list,
-                             llvm::LoadInst &inst);
   void zext_codegen(assem::InstrList *instr_list, llvm::ZExtInst *inst);
   void call_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
   void ret_codegen(assem::InstrList *instr_list, llvm::ReturnInst *inst,
-                       std::string_view function_name, llvm::BasicBlock *bb);
+                   std::string_view function_name, llvm::BasicBlock *bb);
   void br_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
   void icmp_codegen(assem::InstrList *instr_list, llvm::ICmpInst *inst);
   void phi_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
