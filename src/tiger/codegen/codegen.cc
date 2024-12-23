@@ -1,5 +1,6 @@
 #include "tiger/codegen/codegen.h"
 #include "tiger/codegen/assem.h"
+#include "tiger/frame/temp.h"
 
 #include <cassert>
 #include <iostream>
@@ -116,58 +117,6 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
   // TODO: your lab5 code here
   auto op_code = inst.getOpcode();
   switch (inst.getOpcode()) {
-    /**
-     *  %rsp only changed by addq or subq, only when enter or exit function.
-     *  First two lines in ir changed %rsp, but ProcEntryExit3 actually change
-     * %rsp. So we should ignore distination is %rsp in ir.
-     */
-  case llvm::Instruction::Add:
-  case llvm::Instruction::Sub:
-  case llvm::Instruction::Mul: {
-    std::string oper;
-    if (inst.getOpcode() == llvm::Instruction::Add)
-      oper = "addq";
-    else if (inst.getOpcode() == llvm::Instruction::Sub)
-      oper = "subq";
-    else if (inst.getOpcode() == llvm::Instruction::Mul)
-      oper = "imulq";
-
-    llvm::Value *val1 = inst.getOperand(0);
-    llvm::Value *val2 = inst.getOperand(1);
-    if (llvm::dyn_cast<llvm::ConstantInt>(val1))
-      std::swap(val1, val2);
-
-    temp::Temp *dist_temp;
-    if (IsRsp(&inst, inst.getFunction()->getName())) {
-      dist_temp = reg_manager->GetRegister(frame::X64RegManager::Reg::RSP);
-      break;
-    } else {
-      dist_temp = temp_map_->find(&inst)->second;
-      temp::Temp *val1_temp =
-          IsRsp(val1, inst.getFunction()->getName())
-              ? reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)
-              : temp_map_->find(val1)->second;
-      instr_list->Append(new assem::MoveInstr("movq `s0,`d0",
-                                              new temp::TempList(dist_temp),
-                                              new temp::TempList(val1_temp)));
-    }
-
-    if (llvm::dyn_cast<llvm::Instruction>(val2)) {
-      temp::Temp *val2_temp =
-          IsRsp(val2, inst.getFunction()->getName())
-              ? reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)
-              : temp_map_->find(val2)->second;
-      instr_list->Append(new assem::OperInstr(
-          oper + " `s0,`d0", new temp::TempList(dist_temp),
-          new temp::TempList({val2_temp, dist_temp}), nullptr));
-    } else if (llvm::ConstantInt *constInt =
-                   llvm::dyn_cast<llvm::ConstantInt>(val2)) {
-      instr_list->Append(new assem::OperInstr(
-          oper + " $" + std::to_string(constInt->getSExtValue()) + ",`d0",
-          new temp::TempList(dist_temp), new temp::TempList(dist_temp),
-          nullptr));
-    }
-  } break;
   case llvm::Instruction::SDiv: {
     llvm::Value *val1 = inst.getOperand(0);
     llvm::Value *val2 = inst.getOperand(1);
@@ -406,79 +355,6 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
           new temp::TempList(), new temp::TempList(), target));
     }
   } break;
-
-  case llvm::Instruction::ICmp: {
-    llvm::ICmpInst *cmp_inst = llvm::dyn_cast<llvm::ICmpInst>(&inst);
-    llvm::Value *val1 = cmp_inst->getOperand(0);
-    llvm::Value *val2 = cmp_inst->getOperand(1);
-
-    llvm::ConstantInt *constInt1 = llvm::dyn_cast<llvm::ConstantInt>(val1);
-    llvm::ConstantInt *constInt2 = llvm::dyn_cast<llvm::ConstantInt>(val2);
-
-    /**
-     *  cmpq b, a is like computing a - b without setting destination. Pay
-     * attention to the order.
-     */
-    if (constInt1 && constInt2) {
-      instr_list->Append(new assem::OperInstr(
-          "cmpq $" + std::to_string(constInt2->getSExtValue()) + ",$" +
-              std::to_string(constInt1->getSExtValue()),
-          new temp::TempList(), new temp::TempList(), nullptr));
-    } else if (constInt1) {
-      instr_list->Append(new assem::OperInstr(
-          "cmpq `s0,$" + std::to_string(constInt1->getSExtValue()),
-          new temp::TempList(),
-          new temp::TempList(temp_map_->find(val2)->second), nullptr));
-    } else if (constInt2) {
-      instr_list->Append(new assem::OperInstr(
-          "cmpq $" + std::to_string(constInt2->getSExtValue()) + ",`s0",
-          new temp::TempList(),
-          new temp::TempList(temp_map_->find(val1)->second), nullptr));
-    } else {
-      instr_list->Append(new assem::OperInstr(
-          "cmpq `s0,`s1", new temp::TempList(),
-          new temp::TempList(
-              {temp_map_->find(val2)->second, temp_map_->find(val1)->second}),
-          nullptr));
-    }
-
-    instr_list->Append(new assem::OperInstr(
-        "movq $0,`d0", new temp::TempList(temp_map_->find(cmp_inst)->second),
-        new temp::TempList(), nullptr));
-    switch (cmp_inst->getPredicate()) {
-    case llvm::CmpInst::Predicate::ICMP_EQ:
-      instr_list->Append(new assem::OperInstr(
-          "sete `d0", new temp::TempList(temp_map_->find(cmp_inst)->second),
-          new temp::TempList(), nullptr));
-      break;
-    case llvm::CmpInst::Predicate::ICMP_NE:
-      instr_list->Append(new assem::OperInstr(
-          "setne `d0", new temp::TempList(temp_map_->find(cmp_inst)->second),
-          new temp::TempList(), nullptr));
-      break;
-    case llvm::CmpInst::Predicate::ICMP_SLT:
-      instr_list->Append(new assem::OperInstr(
-          "setl `d0", new temp::TempList(temp_map_->find(cmp_inst)->second),
-          new temp::TempList(), nullptr));
-      break;
-    case llvm::CmpInst::Predicate::ICMP_SLE:
-      instr_list->Append(new assem::OperInstr(
-          "setle `d0", new temp::TempList(temp_map_->find(cmp_inst)->second),
-          new temp::TempList(), nullptr));
-      break;
-    case llvm::CmpInst::Predicate::ICMP_SGT:
-      instr_list->Append(new assem::OperInstr(
-          "setg `d0", new temp::TempList(temp_map_->find(cmp_inst)->second),
-          new temp::TempList(), nullptr));
-      break;
-    case llvm::CmpInst::Predicate::ICMP_SGE:
-      instr_list->Append(new assem::OperInstr(
-          "setge `d0", new temp::TempList(temp_map_->find(cmp_inst)->second),
-          new temp::TempList(), nullptr));
-      break;
-    }
-  } break;
-
     /**
      * 这种方法好就好在jmp前只需要传bb的index就行。另一种实现还需要知道传哪个temp，所以需要维护一个from_bb,
      * to_bb -> llvm::Value的映射。 而且还不一定查得到to_bb, 比如ret指令。
@@ -550,20 +426,29 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
     }
     instr_list->Append(new assem::LabelInstr(phi_end_label));
   } break;
-
+    // my
   case llvm::Instruction::Load: {
     this->load_codegen(instr_list, llvm::dyn_cast<llvm::LoadInst>(&inst));
     break;
   }
-  // case llvm::Instruction::Add: {
-  //   break;
-  // }
-  // case llvm::Instruction::Sub: {
-  //   break;
-  // }
-  // case llvm::Instruction::Mul: {
-  //   break;
-  // }
+  case llvm::Instruction::Add: {
+    this->add_sub_mul_codegen(instr_list,
+                              llvm::cast<llvm::BinaryOperator>(inst),
+                              function_name, "addq ");
+    break;
+  }
+  case llvm::Instruction::Sub: {
+    this->add_sub_mul_codegen(instr_list,
+                              llvm::cast<llvm::BinaryOperator>(inst),
+                              function_name, "subq ");
+    break;
+  }
+  case llvm::Instruction::Mul: {
+    this->add_sub_mul_codegen(instr_list,
+                              llvm::cast<llvm::BinaryOperator>(inst),
+                              function_name, "imulq ");
+    break;
+  }
   // case llvm::Instruction::SDiv: {
   //   break;
   // }
@@ -597,9 +482,10 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
   // case llvm::Instruction::Br: {
   //   break;
   // }
-  // case llvm::Instruction::ICmp: {
-  //   break;
-  // }
+  case llvm::Instruction::ICmp: {
+    this->icmp_codegen(instr_list, llvm::dyn_cast<llvm::ICmpInst>(&inst));
+    break;
+  }
   // case llvm::Instruction::PHI: {
   //   break;
   // }
@@ -660,7 +546,65 @@ void CodeGen::store_codegen(assem::InstrList *instr_list,
 }
 
 void CodeGen::add_sub_mul_codegen(assem::InstrList *instr_list,
-                                  llvm::LoadInst &inst) {}
+                                  llvm::BinaryOperator &inst,
+                                  std::string_view function_name,
+                                  std::string op_str) {
+  //  对终值的类型进行讨论
+  temp::TempList *dst_list = new temp::TempList();
+  if (IsRsp(&inst, function_name)) {
+    /**
+     *addq或subq可能更改%rsp，在输入或退出功能时更改。
+     *ir中的前两行更改了%rsp，但ProcEntryExit3已经更改了
+     */
+    return;
+  }
+  dst_list->Append(temp_map_->at(&inst));
+  // 对左右值的类型进行讨论
+  temp::TempList *left_list = new temp::TempList();
+  std::string left_string = "";
+  auto left_value = inst.getOperand(0);
+  llvm::ConstantInt *left_const = llvm::dyn_cast<llvm::ConstantInt>(left_value);
+  if (left_const) {
+    // 左值是常数
+    left_string = "$" + std::to_string(left_const->getSExtValue());
+  }
+  if (IsRsp(left_value, function_name)) {
+    left_string = "`s0";
+    left_list->Append(reg_manager->GetRegister(frame::X64RegManager::Reg::RSP));
+  }
+  if (left_string == "") {
+    //说明既不是常数，也不是rsp
+    left_string = "`s0";
+    left_list->Append(this->temp_map_->at(left_value));
+  }
+  temp::TempList *right_list = new temp::TempList();
+  std::string right_string = "";
+  auto right_value = inst.getOperand(1);
+  llvm::ConstantInt *right_const =
+      llvm::dyn_cast<llvm::ConstantInt>(right_value);
+
+  if (right_const) {
+    // 右值是常数
+    right_string = "$" + std::to_string(right_const->getSExtValue());
+  }
+
+  if (IsRsp(right_value, function_name)) {
+    right_string = "`s0";
+    right_list->Append(
+        reg_manager->GetRegister(frame::X64RegManager::Reg::RSP));
+  }
+
+  if (right_string == "") {
+    // 说明既不是常数，也不是rsp
+    right_string = "`s0";
+    right_list->Append(this->temp_map_->at(right_value));
+  }
+  instr_list->Append(new assem::MoveInstr("movq " + left_string + "," + "`d0",
+                                          dst_list, left_list));
+  instr_list->Append(new assem::OperInstr(op_str + right_string + "," + "`d0",
+                                          dst_list, right_list, nullptr));
+}
+
 void CodeGen::sdiv_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {
 }
 void CodeGen::ptrtoint_codegen(assem::InstrList *instr_list,
@@ -696,7 +640,63 @@ void CodeGen::call_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {
 }
 void CodeGen::ret_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {}
 void CodeGen::br_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {}
-void CodeGen::icmp_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {
+void CodeGen::icmp_codegen(assem::InstrList *instr_list, llvm::ICmpInst *inst) {
+  auto value_1 = inst->getOperand(0);
+  auto value_2 = inst->getOperand(1);
+  std::string str_1;
+  std::string str_2;
+  temp::TempList *src_list = new temp::TempList();
+  auto *constInt1 = llvm::dyn_cast<llvm::ConstantInt>(value_1);
+  auto *constInt2 = llvm::dyn_cast<llvm::ConstantInt>(value_2);
+  if (constInt1 && constInt2) {
+    // icmp eq i32 5, 3 => cmpq $3, $5
+    instr_list->Append(new assem::OperInstr(
+        "cmpq $" + std::to_string(constInt2->getSExtValue()) + ", $" +
+            std::to_string(constInt1->getSExtValue()),
+        new temp::TempList(), new temp::TempList(), nullptr));
+  }
+
+  if (constInt1 && !constInt2) {
+    // icmp eq i32 %reg, 5 => cmpq `s0, $5
+    instr_list->Append(new assem::OperInstr(
+        "cmpq `s0, $" + std::to_string(constInt1->getSExtValue()),
+        new temp::TempList(),
+        new temp::TempList(temp_map_->find(value_2)->second), nullptr));
+  }
+
+  if (!constInt1 && constInt2) {
+    // icmp eq i32 5, %reg => cmpq $5, `s0
+    instr_list->Append(new assem::OperInstr(
+        "cmpq $" + std::to_string(constInt2->getSExtValue()) + ", `s0",
+        new temp::TempList(),
+        new temp::TempList(temp_map_->find(value_1)->second), nullptr));
+  }
+
+  if (!constInt1 && !constInt2) {
+    // icmp eq i32 %reg1, %reg2 => cmpq `s0, `s1
+    instr_list->Append(new assem::OperInstr(
+        "cmpq `s0, `s1", new temp::TempList(),
+        new temp::TempList({temp_map_->find(value_2)->second,
+                            temp_map_->find(value_1)->second}),
+        nullptr));
+  }
+  static const std::unordered_map<llvm::CmpInst::Predicate, std::string>
+      predicateToAssem = {{llvm::CmpInst::Predicate::ICMP_EQ, "sete"},
+                          {llvm::CmpInst::Predicate::ICMP_NE, "setne"},
+                          {llvm::CmpInst::Predicate::ICMP_SLT, "setl"},
+                          {llvm::CmpInst::Predicate::ICMP_SLE, "setle"},
+                          {llvm::CmpInst::Predicate::ICMP_SGT, "setg"},
+                          {llvm::CmpInst::Predicate::ICMP_SGE, "setge"}};
+  auto it = predicateToAssem.find(inst->getPredicate());
+  if (it != predicateToAssem.end()) {
+    // icmp eq i32 %reg1, %reg2 => sete `d0
+    instr_list->Append(new assem::OperInstr(
+        it->second + " `d0", new temp::TempList(temp_map_->find(inst)->second),
+        new temp::TempList(), nullptr));
+  } else {
+    // Handle unsupported predicate (optional)
+    throw std::runtime_error("Unsupported comparison predicate");
+  }
 }
 void CodeGen::phi_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {}
 

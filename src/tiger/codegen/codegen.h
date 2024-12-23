@@ -72,7 +72,9 @@ private:
   std::unique_ptr<AssemInstr> assem_instr_;
   void load_codegen(assem::InstrList *instr_list, llvm::LoadInst *inst);
   void store_codegen(assem::InstrList *instr_list, llvm::StoreInst *inst);
-  void add_sub_mul_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
+  void add_sub_mul_codegen(assem::InstrList *instr_list,
+                           llvm::BinaryOperator &inst,
+                           std::string_view function_name, std::string oper);
   void sdiv_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
   void ptrtoint_codegen(assem::InstrList *instr_list, llvm::PtrToIntInst *inst);
   void inttoptr_codegen(assem::InstrList *instr_list, llvm::IntToPtrInst *inst);
@@ -82,7 +84,7 @@ private:
   void call_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
   void ret_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
   void br_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
-  void icmp_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
+  void icmp_codegen(assem::InstrList *instr_list, llvm::ICmpInst *inst);
   void phi_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
 };
 
