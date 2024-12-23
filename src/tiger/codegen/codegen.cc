@@ -117,50 +117,6 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
   // TODO: your lab5 code here
   auto op_code = inst.getOpcode();
   switch (inst.getOpcode()) {
-  case llvm::Instruction::SDiv: {
-    llvm::Value *val1 = inst.getOperand(0);
-    llvm::Value *val2 = inst.getOperand(1);
-    if (llvm::dyn_cast<llvm::ConstantInt>(val1))
-      std::swap(val1, val2);
-
-    temp::Temp *val1_temp =
-        IsRsp(val1, inst.getFunction()->getName())
-            ? reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)
-            : temp_map_->find(val1)->second;
-    instr_list->Append(
-        new assem::MoveInstr("movq `s0,`d0",
-                             new temp::TempList(reg_manager->GetRegister(
-                                 frame::X64RegManager::Reg::RAX)),
-                             new temp::TempList(val1_temp)));
-    instr_list->Append(
-        new assem::MoveInstr("movq $0,`d0",
-                             new temp::TempList(reg_manager->GetRegister(
-                                 frame::X64RegManager::Reg::RDX)),
-                             new temp::TempList()));
-
-    if (llvm::dyn_cast<llvm::Instruction>(val2)) {
-      temp::Temp *val2_temp =
-          IsRsp(val2, inst.getFunction()->getName())
-              ? reg_manager->GetRegister(frame::X64RegManager::Reg::RSP)
-              : temp_map_->find(val2)->second;
-      instr_list->Append(new assem::OperInstr("idivq `s0", new temp::TempList(),
-                                              new temp::TempList(val2_temp),
-                                              nullptr));
-    } else if (llvm::ConstantInt *constInt =
-                   llvm::dyn_cast<llvm::ConstantInt>(val2)) {
-      temp::Temp *temp = temp::TempFactory::NewTemp();
-      instr_list->Append(new assem::MoveInstr(
-          "movq $" + std::to_string(constInt->getSExtValue()) + ",`d0",
-          new temp::TempList(temp), new temp::TempList()));
-      instr_list->Append(new assem::OperInstr("idivq `s0", new temp::TempList(),
-                                              new temp::TempList(temp),
-                                              nullptr));
-    }
-    instr_list->Append(new assem::MoveInstr(
-        "movq `s0,`d0", new temp::TempList(temp_map_->find(&inst)->second),
-        new temp::TempList(
-            reg_manager->GetRegister(frame::X64RegManager::Reg::RAX))));
-  } break;
   case llvm::Instruction::GetElementPtr: {
     llvm::GetElementPtrInst *gep_inst =
         llvm::dyn_cast<llvm::GetElementPtrInst>(&inst);
@@ -260,7 +216,6 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
         new temp::TempList(
             reg_manager->GetRegister(frame::X64RegManager::Reg::RAX))));
   } break;
-
   case llvm::Instruction::Ret: {
     llvm::ReturnInst *return_inst = llvm::dyn_cast<llvm::ReturnInst>(&inst);
 
@@ -294,7 +249,6 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
         "jmp " + std::string(return_inst->getFunction()->getName()) + "_end",
         new temp::TempList(), new temp::TempList(), targets));
   } break;
-
   case llvm::Instruction::Br: {
     llvm::BranchInst *branch_inst = llvm::dyn_cast<llvm::BranchInst>(&inst);
     if (branch_inst->isConditional()) {
@@ -355,11 +309,6 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
           new temp::TempList(), new temp::TempList(), target));
     }
   } break;
-    /**
-     * 这种方法好就好在jmp前只需要传bb的index就行。另一种实现还需要知道传哪个temp，所以需要维护一个from_bb,
-     * to_bb -> llvm::Value的映射。 而且还不一定查得到to_bb, 比如ret指令。
-     * 但缺点就是汇编代码太冗余了。
-     */
   case llvm::Instruction::PHI: {
 
     llvm::PHINode *phi_node = llvm::dyn_cast<llvm::PHINode>(&inst);
@@ -449,9 +398,11 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                               function_name, "imulq ");
     break;
   }
-  // case llvm::Instruction::SDiv: {
-  //   break;
-  // }
+  case llvm::Instruction::SDiv: {
+    this->div_codegen(instr_list, llvm::cast<llvm::BinaryOperator>(inst),
+                      function_name);
+    break;
+  }
   case llvm::Instruction::PtrToInt: {
     this->ptrtoint_codegen(instr_list,
                            llvm::dyn_cast<llvm::PtrToIntInst>(&inst));
@@ -605,8 +556,79 @@ void CodeGen::add_sub_mul_codegen(assem::InstrList *instr_list,
                                           dst_list, right_list, nullptr));
 }
 
-void CodeGen::sdiv_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {
+void CodeGen::div_codegen(assem::InstrList *instr_list,
+                          llvm::BinaryOperator &inst,
+                          std::string_view function_name) {
+  temp::TempList *dst_list = new temp::TempList();
+  dst_list->Append(temp_map_->at(&inst));
+  // 对左操作数（分子）进行分析
+  temp::TempList *left_list = new temp::TempList();
+  std::string left_string = "";
+  auto left_value = inst.getOperand(0);
+  llvm::ConstantInt *left_const = llvm::dyn_cast<llvm::ConstantInt>(left_value);
+
+  if (left_const) {
+    // 如果左操作数是常量
+    left_string = "$" + std::to_string(left_const->getSExtValue());
+  }
+  if (IsRsp(left_value, function_name)) {
+    // 如果左操作数是%rsp
+    left_string = "`s0";
+    left_list->Append(reg_manager->GetRegister(frame::X64RegManager::Reg::RSP));
+  }
+  if (left_string == "") {
+    // 如果左操作数既不是常量也不是%rsp
+    left_string = "`s0";
+    left_list->Append(this->temp_map_->at(left_value));
+  }
+
+  // 对右操作数（除数）进行分析
+  temp::TempList *right_list = new temp::TempList();
+  std::string right_string = "";
+  auto right_value = inst.getOperand(1);
+  llvm::ConstantInt *right_const =
+      llvm::dyn_cast<llvm::ConstantInt>(right_value);
+
+  if (right_const) {
+    // 如果右操作数是常量
+    right_string = "$" + std::to_string(right_const->getSExtValue());
+  }
+  if (IsRsp(right_value, function_name)) {
+    // 如果右操作数是%rsp
+    right_string = "`s0";
+    right_list->Append(
+        reg_manager->GetRegister(frame::X64RegManager::Reg::RSP));
+  }
+  if (right_string == "") {
+    // 如果右操作数既不是常量也不是%rsp
+    right_string = "`s0";
+    right_list->Append(this->temp_map_->at(right_value));
+  }
+
+  // 生成指令：将分子加载到%RAX
+  instr_list->Append(
+      new assem::MoveInstr("movq " + left_string + "," + "`d0",
+                           new temp::TempList(reg_manager->GetRegister(
+                               frame::X64RegManager::Reg::RAX)),
+                           left_list));
+
+  // 生成指令：符号扩展 %RAX 到 %RDX
+  instr_list->Append(new assem::OperInstr("cqto", new temp::TempList(),
+                                          new temp::TempList(), nullptr));
+
+  // 生成指令：执行有符号除法
+  instr_list->Append(new assem::OperInstr(
+      "idivq " + right_string, new temp::TempList(), right_list, nullptr));
+
+  // 将结果存储到目标寄存器
+  std::string tmp = "movq `s0,";
+  tmp = tmp + "`d0";
+  instr_list->Append(
+      new assem::MoveInstr(tmp, dst_list,
+                           new temp::TempList(reg_manager->GetRegister(
+                               frame::X64RegManager::Reg::RAX))));
 }
+
 void CodeGen::ptrtoint_codegen(assem::InstrList *instr_list,
                                llvm::PtrToIntInst *inst) {
   // %result = ptrtoint i32* %ptr to i64 => movq %rax, %rbx   ;
@@ -638,7 +660,54 @@ void CodeGen::zext_codegen(assem::InstrList *instr_list, llvm::ZExtInst *inst) {
 }
 void CodeGen::call_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {
 }
-void CodeGen::ret_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {}
+void CodeGen::ret_codegen(assem::InstrList *instr_list, llvm::ReturnInst *inst,
+                          std::string_view function_name,
+                          llvm::BasicBlock *bb) {
+  if (inst->getNumOperands() == 1) {
+    // 说明返回值存在，不是void
+    // 将返回值movq到 %rax
+    auto rax_reg = reg_manager->GetRegister(frame::X64RegManager::Reg::RAX);
+    temp::TempList *dst_list = new temp::TempList();
+    dst_list->Append(rax_reg);
+    std::string src_str = "";
+    temp::TempList *src_list = new temp::TempList();
+    llvm::ConstantInt *ret_value =
+        llvm::dyn_cast<llvm::ConstantInt>(inst->getOperand(0));
+    if (ret_value) {
+      src_str = "$" + std::to_string(ret_value->getSExtValue());
+    }
+    if (IsRsp(inst->getOperand(0), function_name)) {
+      src_str = "`s0";
+      src_list->Append(
+          reg_manager->GetRegister(frame::X64RegManager::Reg::RSP));
+    }
+    if (src_str == "") {
+      src_str = "`s0";
+      src_list->Append(temp_map_->at(inst->getOperand(0)));
+    }
+
+    instr_list->Append(
+        new assem::MoveInstr("movq " + src_str + ",`d0", dst_list, src_list));
+  }
+
+  auto phi_temps = std::make_unique<temp::TempList>(phi_temp_);
+
+  // Add move instruction for basic block mapping
+  auto move_instr = std::make_unique<assem::MoveInstr>(
+      "movq $" + std::to_string(bb_map_->at(inst->getParent())) + ",`d0",
+      phi_temps.get(), new temp::TempList());
+  instr_list->Append(move_instr.release());
+
+  // Create label for function end
+  std::string end_label = std::string(function_name) + "_end";
+  auto target_labels =
+      new std::vector<temp::Label *>{temp::LabelFactory::NamedLabel(end_label)};
+  // Add jump instruction to function end
+  auto jump_instr = std::make_unique<assem::OperInstr>(
+      "jmp " + end_label, new temp::TempList(), new temp::TempList(),
+      new assem::Targets(target_labels));
+  instr_list->Append(jump_instr.release());
+}
 void CodeGen::br_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {}
 void CodeGen::icmp_codegen(assem::InstrList *instr_list, llvm::ICmpInst *inst) {
   auto value_1 = inst->getOperand(0);
