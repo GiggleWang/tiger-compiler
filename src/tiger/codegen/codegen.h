@@ -80,11 +80,12 @@ private:
   void ptrtoint_codegen(assem::InstrList *instr_list, llvm::PtrToIntInst *inst);
   void inttoptr_codegen(assem::InstrList *instr_list, llvm::IntToPtrInst *inst);
   void zext_codegen(assem::InstrList *instr_list, llvm::ZExtInst *inst);
-  void call_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
+  void call_codegen(assem::InstrList *instr_list, llvm::CallInst *inst,
+                    std::string_view function_name, llvm::BasicBlock *bb);
   void ret_codegen(assem::InstrList *instr_list, llvm::ReturnInst *inst,
                    std::string_view function_name, llvm::BasicBlock *bb);
-  void br_codegen(assem::InstrList *instr_list,llvm::BranchInst *inst,
-                   std::string_view function_name, llvm::BasicBlock *bb);
+  void br_codegen(assem::InstrList *instr_list, llvm::BranchInst *inst,
+                  std::string_view function_name, llvm::BasicBlock *bb);
   void icmp_codegen(assem::InstrList *instr_list, llvm::ICmpInst *inst);
   void phi_codegen(assem::InstrList *instr_list, llvm::PHINode *inst,
                    std::string_view function_name, llvm::BasicBlock *bb);
