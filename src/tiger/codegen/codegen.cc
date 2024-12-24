@@ -8,6 +8,7 @@
 #include <llvm-14/llvm/IR/Instruction.h>
 #include <llvm-14/llvm/IR/Instructions.h>
 #include <llvm-14/llvm/Support/Casting.h>
+#include <map>
 #include <sstream>
 
 extern frame::RegManager *reg_manager;
@@ -185,132 +186,6 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
         new temp::TempList(
             reg_manager->GetRegister(frame::X64RegManager::Reg::RAX))));
   } break;
-  // case llvm::Instruction::Br: {
-  //   llvm::BranchInst *branch_inst = llvm::dyn_cast<llvm::BranchInst>(&inst);
-  //   if (branch_inst->isConditional()) {
-  //     if (llvm::ConstantInt *constInt =
-  //             llvm::dyn_cast<llvm::ConstantInt>(branch_inst->getOperand(0)))
-  //             {
-  //       instr_list->Append(new assem::OperInstr(
-  //           "cmpq $" + std::to_string(constInt->getSExtValue()) + ",$1",
-  //           new temp::TempList(), new temp::TempList(), nullptr));
-  //     } else if (llvm::dyn_cast<llvm::Instruction>(
-  //                    branch_inst->getOperand(0))) {
-  //       instr_list->Append(new assem::OperInstr(
-  //           "cmpq $1,`s0", new temp::TempList(),
-  //           new temp::TempList(
-  //               temp_map_->find(branch_inst->getOperand(0))->second),
-  //           nullptr));
-  //     }
-  //     /**
-  //      *  Operand(1) is false branch, Operand(2) is true branch.
-  //      */
-  //     instr_list->Append(new assem::MoveInstr(
-  //         "movq $" +
-  //             std::to_string(bb_map_->find(branch_inst->getParent())->second)
-  //             +
-  //             ",`d0",
-  //         new temp::TempList(phi_temp_), new temp::TempList()));
-  //     assem::Targets *target1 = new assem::Targets(
-  //         new std::vector<temp::Label *>({temp::LabelFactory::NamedLabel(
-  //             branch_inst->getOperand(1)->getName())}));
-  //     instr_list->Append(new assem::OperInstr(
-  //         "jne " + std::string(branch_inst->getOperand(1)->getName()),
-  //         new temp::TempList(), new temp::TempList(), target1));
-  //     instr_list->Append(new assem::MoveInstr(
-  //         "movq $" +
-  //             std::to_string(bb_map_->find(branch_inst->getParent())->second)
-  //             +
-  //             ",`d0",
-  //         new temp::TempList(phi_temp_), new temp::TempList()));
-  //     assem::Targets *target2 = new assem::Targets(
-  //         new std::vector<temp::Label *>({temp::LabelFactory::NamedLabel(
-  //             branch_inst->getOperand(2)->getName())}));
-  //     instr_list->Append(new assem::OperInstr(
-  //         "jmp " + std::string(branch_inst->getOperand(2)->getName()),
-  //         new temp::TempList(), new temp::TempList(), target2));
-  //   } else {
-  //     instr_list->Append(new assem::MoveInstr(
-  //         "movq $" +
-  //             std::to_string(bb_map_->find(branch_inst->getParent())->second)
-  //             +
-  //             ",`d0",
-  //         new temp::TempList(phi_temp_), new temp::TempList()));
-  //     assem::Targets *target = new assem::Targets(
-  //         new std::vector<temp::Label *>({temp::LabelFactory::NamedLabel(
-  //             branch_inst->getOperand(0)->getName())}));
-  //     instr_list->Append(new assem::OperInstr(
-  //         "jmp " + std::string(branch_inst->getOperand(0)->getName()),
-  //         new temp::TempList(), new temp::TempList(), target));
-  //   }
-  // } break;
-  case llvm::Instruction::PHI: {
-
-    llvm::PHINode *phi_node = llvm::dyn_cast<llvm::PHINode>(&inst);
-    std::vector<std::string> random_codes;
-    unsigned num_args = phi_node->getNumOperands();
-    for (int i = 0; i <= num_args; i++)
-      random_codes.push_back(std::to_string(rand()));
-
-    for (int i = 0; i < num_args; i++) {
-      llvm::BasicBlock *incomingBlock = phi_node->getIncomingBlock(i);
-
-      std::string phi_label =
-          std::string(phi_node->getParent()->getName()) + "_" + random_codes[i];
-      instr_list->Append(new assem::OperInstr(
-          "cmpq $" + std::to_string(bb_map_->find(incomingBlock)->second) +
-              ",`s0",
-          new temp::TempList(), new temp::TempList(phi_temp_), nullptr));
-      assem::Targets *target =
-          new assem::Targets(new std::vector<temp::Label *>(
-              {temp::LabelFactory::NamedLabel(phi_label)}));
-      instr_list->Append(new assem::OperInstr("je " + phi_label,
-                                              new temp::TempList(),
-                                              new temp::TempList(), target));
-    }
-
-    std::string phi_end_label = std::string(phi_node->getParent()->getName()) +
-                                "_end_" + random_codes.back();
-    for (int i = 0; i < num_args; i++) {
-      llvm::Value *incomingValue = phi_node->getIncomingValue(i);
-
-      std::string phi_label =
-          std::string(phi_node->getParent()->getName()) + "_" + random_codes[i];
-      instr_list->Append(new assem::LabelInstr(phi_label));
-      /**
-       *  If phi incomming is constantInt, it is bool. So we need to use
-       * getZExtValue. If is null, it is $0 Otherwise it should be in temp_map_
-       */
-      if (llvm::ConstantInt *constant_int =
-              llvm::dyn_cast<llvm::ConstantInt>(incomingValue)) {
-        int64_t constant_int_val = constant_int->getBitWidth() == 1
-                                       ? constant_int->getZExtValue()
-                                       : constant_int->getSExtValue();
-        instr_list->Append(new assem::MoveInstr(
-            "movq $" + std::to_string(constant_int_val) + ",`d0",
-            new temp::TempList(temp_map_->find(phi_node)->second),
-            new temp::TempList()));
-      } else if (llvm::dyn_cast<llvm::ConstantPointerNull>(incomingValue)) {
-        instr_list->Append(new assem::MoveInstr(
-            "movq $0,`d0",
-            new temp::TempList(temp_map_->find(phi_node)->second),
-            new temp::TempList()));
-      } else {
-        instr_list->Append(new assem::MoveInstr(
-            "movq `s0,`d0",
-            new temp::TempList(temp_map_->find(phi_node)->second),
-            new temp::TempList(temp_map_->find(incomingValue)->second)));
-      }
-      assem::Targets *target =
-          new assem::Targets(new std::vector<temp::Label *>(
-              {temp::LabelFactory::NamedLabel(phi_end_label)}));
-      instr_list->Append(new assem::OperInstr("jmp " + phi_end_label,
-                                              new temp::TempList(),
-                                              new temp::TempList(), target));
-    }
-    instr_list->Append(new assem::LabelInstr(phi_end_label));
-  } break;
-    // my
   case llvm::Instruction::Load: {
     this->load_codegen(instr_list, llvm::dyn_cast<llvm::LoadInst>(&inst));
     break;
@@ -421,9 +296,11 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
     this->icmp_codegen(instr_list, llvm::dyn_cast<llvm::ICmpInst>(&inst));
     break;
   }
-    // case llvm::Instruction::PHI: {
-    //   break;
-    // }
+  case llvm::Instruction::PHI: {
+    this->phi_codegen(instr_list, llvm::dyn_cast<llvm::PHINode>(&inst),
+                      function_name, bb);
+    break;
+  }
 
   default:
     std::cout << inst.getOpcodeName() << std::endl;
@@ -733,16 +610,14 @@ void CodeGen::br_codegen(assem::InstrList *instr_list, llvm::BranchInst *inst,
       "movq $" + std::to_string(parent_value) + ",`d0",
       new temp::TempList(phi_temp_), new temp::TempList()));
 
-  instr_list->Append(
-      new assem::OperInstr("je " + true_jmp.str(),
-                           new temp::TempList(), new temp::TempList(),
-                           new assem::Targets(new std::vector<temp::Label *>(
-                               {temp::LabelFactory::NamedLabel(true_jmp)}))));
-  instr_list->Append(
-      new assem::OperInstr("jmp " + false_jmp.str(),
-                           new temp::TempList(), new temp::TempList(),
-                           new assem::Targets(new std::vector<temp::Label *>(
-                               {temp::LabelFactory::NamedLabel(false_jmp)}))));
+  instr_list->Append(new assem::OperInstr(
+      "je " + true_jmp.str(), new temp::TempList(), new temp::TempList(),
+      new assem::Targets(new std::vector<temp::Label *>(
+          {temp::LabelFactory::NamedLabel(true_jmp)}))));
+  instr_list->Append(new assem::OperInstr(
+      "jmp " + false_jmp.str(), new temp::TempList(), new temp::TempList(),
+      new assem::Targets(new std::vector<temp::Label *>(
+          {temp::LabelFactory::NamedLabel(false_jmp)}))));
 }
 void CodeGen::icmp_codegen(assem::InstrList *instr_list, llvm::ICmpInst *inst) {
   auto value_1 = inst->getOperand(0);
@@ -802,6 +677,59 @@ void CodeGen::icmp_codegen(assem::InstrList *instr_list, llvm::ICmpInst *inst) {
     throw std::runtime_error("Unsupported comparison predicate");
   }
 }
-void CodeGen::phi_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {}
+void CodeGen::phi_codegen(assem::InstrList *instr_list, llvm::PHINode *inst,
+                          std::string_view function_name,
+                          llvm::BasicBlock *bb) {
+  std::string end_label = std::string(inst->getParent()->getName()) + "_end";
+  for (int i = 0; i < inst->getNumOperands(); i++) {
+    std::string phi_label =
+        inst->getParent()->getName().str() + "_" + std::to_string(i);
+    auto block = bb_map_->at(inst->getIncomingBlock(i));
+    instr_list->Append(new assem::OperInstr(
+        "cmpq $" + std::to_string(block) + ",`s0", new temp::TempList(),
+        new temp::TempList(phi_temp_), nullptr));
+    instr_list->Append(new assem::OperInstr(
+        "je " + phi_label, new temp::TempList(), new temp::TempList(),
+        new assem::Targets(new std::vector<temp::Label *>(
+            {temp::LabelFactory::NamedLabel(phi_label)}))));
+  }
+  for (int i = 0; i < inst->getNumOperands(); i++) {
+    instr_list->Append(new assem::LabelInstr(
+        inst->getParent()->getName().str() + "_" + std::to_string(i)));
+    std::string src_string = "";
+    temp::TempList *src_list = new temp::TempList();
+    llvm::ConstantInt *src_value =
+        llvm::dyn_cast<llvm::ConstantInt>(inst->getIncomingValue(i));
+    llvm::ConstantPointerNull *is_nullptr =
+        llvm::dyn_cast<llvm::ConstantPointerNull>(inst->getIncomingValue(i));
+    if (src_value) {
+      src_string = "$" + std::to_string(src_value->getZExtValue());
+    }
+    if (is_nullptr) {
+      src_string = "$0";
+    }
+    if (IsRsp(inst->getIncomingValue(i), function_name)) {
+      src_string = "`s0";
+      src_list->Append(
+          reg_manager->GetRegister(frame::X64RegManager::Reg::RSP));
+    }
+    if (src_string == "") {
+      src_string = "`s0";
+      src_list->Append(temp_map_->at(inst->getIncomingValue(i)));
+    }
+    auto move_instr =
+        new assem::MoveInstr("movq " + src_string + ",`d0",
+                             new temp::TempList(temp_map_->at(inst)), src_list);
+    instr_list->Append(move_instr);
+    auto jmp_instr =
+        new assem::OperInstr("jmp " + end_label,
+                             new temp::TempList(), // 源寄存器列表
+                             new temp::TempList(), // 目标寄存器列表
+                             new assem::Targets(new std::vector<temp::Label *>(
+                                 {temp::LabelFactory::NamedLabel(end_label)})));
+    instr_list->Append(jmp_instr);
+  }
+  instr_list->Append(new assem::LabelInstr(end_label));
+}
 
 } // namespace cg
