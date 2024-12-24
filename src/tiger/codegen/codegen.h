@@ -83,7 +83,8 @@ private:
   void call_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
   void ret_codegen(assem::InstrList *instr_list, llvm::ReturnInst *inst,
                    std::string_view function_name, llvm::BasicBlock *bb);
-  void br_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
+  void br_codegen(assem::InstrList *instr_list,llvm::BranchInst *inst,
+                   std::string_view function_name, llvm::BasicBlock *bb);
   void icmp_codegen(assem::InstrList *instr_list, llvm::ICmpInst *inst);
   void phi_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst);
 };

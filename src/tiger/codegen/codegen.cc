@@ -185,66 +185,65 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
         new temp::TempList(
             reg_manager->GetRegister(frame::X64RegManager::Reg::RAX))));
   } break;
-  case llvm::Instruction::Br: {
-    llvm::BranchInst *branch_inst = llvm::dyn_cast<llvm::BranchInst>(&inst);
-    if (branch_inst->isConditional()) {
-      if (llvm::ConstantInt *constInt =
-              llvm::dyn_cast<llvm::ConstantInt>(branch_inst->getOperand(0))) {
-        instr_list->Append(new assem::OperInstr(
-            "cmpq $" + std::to_string(constInt->getSExtValue()) + ",$1",
-            new temp::TempList(), new temp::TempList(), nullptr));
-      } else if (llvm::dyn_cast<llvm::Instruction>(
-                     branch_inst->getOperand(0))) {
-        instr_list->Append(new assem::OperInstr(
-            "cmpq $1,`s0", new temp::TempList(),
-            new temp::TempList(
-                temp_map_->find(branch_inst->getOperand(0))->second),
-            nullptr));
-      }
-
-      /**
-       *  Operand(1) is false branch, Operand(2) is true branch.
-       */
-      instr_list->Append(new assem::MoveInstr(
-          "movq $" +
-              std::to_string(bb_map_->find(branch_inst->getParent())->second) +
-              ",`d0",
-          new temp::TempList(phi_temp_), new temp::TempList()));
-
-      assem::Targets *target1 = new assem::Targets(
-          new std::vector<temp::Label *>({temp::LabelFactory::NamedLabel(
-              branch_inst->getOperand(1)->getName())}));
-      instr_list->Append(new assem::OperInstr(
-          "jne " + std::string(branch_inst->getOperand(1)->getName()),
-          new temp::TempList(), new temp::TempList(), target1));
-
-      instr_list->Append(new assem::MoveInstr(
-          "movq $" +
-              std::to_string(bb_map_->find(branch_inst->getParent())->second) +
-              ",`d0",
-          new temp::TempList(phi_temp_), new temp::TempList()));
-
-      assem::Targets *target2 = new assem::Targets(
-          new std::vector<temp::Label *>({temp::LabelFactory::NamedLabel(
-              branch_inst->getOperand(2)->getName())}));
-      instr_list->Append(new assem::OperInstr(
-          "jmp " + std::string(branch_inst->getOperand(2)->getName()),
-          new temp::TempList(), new temp::TempList(), target2));
-    } else {
-      instr_list->Append(new assem::MoveInstr(
-          "movq $" +
-              std::to_string(bb_map_->find(branch_inst->getParent())->second) +
-              ",`d0",
-          new temp::TempList(phi_temp_), new temp::TempList()));
-
-      assem::Targets *target = new assem::Targets(
-          new std::vector<temp::Label *>({temp::LabelFactory::NamedLabel(
-              branch_inst->getOperand(0)->getName())}));
-      instr_list->Append(new assem::OperInstr(
-          "jmp " + std::string(branch_inst->getOperand(0)->getName()),
-          new temp::TempList(), new temp::TempList(), target));
-    }
-  } break;
+  // case llvm::Instruction::Br: {
+  //   llvm::BranchInst *branch_inst = llvm::dyn_cast<llvm::BranchInst>(&inst);
+  //   if (branch_inst->isConditional()) {
+  //     if (llvm::ConstantInt *constInt =
+  //             llvm::dyn_cast<llvm::ConstantInt>(branch_inst->getOperand(0)))
+  //             {
+  //       instr_list->Append(new assem::OperInstr(
+  //           "cmpq $" + std::to_string(constInt->getSExtValue()) + ",$1",
+  //           new temp::TempList(), new temp::TempList(), nullptr));
+  //     } else if (llvm::dyn_cast<llvm::Instruction>(
+  //                    branch_inst->getOperand(0))) {
+  //       instr_list->Append(new assem::OperInstr(
+  //           "cmpq $1,`s0", new temp::TempList(),
+  //           new temp::TempList(
+  //               temp_map_->find(branch_inst->getOperand(0))->second),
+  //           nullptr));
+  //     }
+  //     /**
+  //      *  Operand(1) is false branch, Operand(2) is true branch.
+  //      */
+  //     instr_list->Append(new assem::MoveInstr(
+  //         "movq $" +
+  //             std::to_string(bb_map_->find(branch_inst->getParent())->second)
+  //             +
+  //             ",`d0",
+  //         new temp::TempList(phi_temp_), new temp::TempList()));
+  //     assem::Targets *target1 = new assem::Targets(
+  //         new std::vector<temp::Label *>({temp::LabelFactory::NamedLabel(
+  //             branch_inst->getOperand(1)->getName())}));
+  //     instr_list->Append(new assem::OperInstr(
+  //         "jne " + std::string(branch_inst->getOperand(1)->getName()),
+  //         new temp::TempList(), new temp::TempList(), target1));
+  //     instr_list->Append(new assem::MoveInstr(
+  //         "movq $" +
+  //             std::to_string(bb_map_->find(branch_inst->getParent())->second)
+  //             +
+  //             ",`d0",
+  //         new temp::TempList(phi_temp_), new temp::TempList()));
+  //     assem::Targets *target2 = new assem::Targets(
+  //         new std::vector<temp::Label *>({temp::LabelFactory::NamedLabel(
+  //             branch_inst->getOperand(2)->getName())}));
+  //     instr_list->Append(new assem::OperInstr(
+  //         "jmp " + std::string(branch_inst->getOperand(2)->getName()),
+  //         new temp::TempList(), new temp::TempList(), target2));
+  //   } else {
+  //     instr_list->Append(new assem::MoveInstr(
+  //         "movq $" +
+  //             std::to_string(bb_map_->find(branch_inst->getParent())->second)
+  //             +
+  //             ",`d0",
+  //         new temp::TempList(phi_temp_), new temp::TempList()));
+  //     assem::Targets *target = new assem::Targets(
+  //         new std::vector<temp::Label *>({temp::LabelFactory::NamedLabel(
+  //             branch_inst->getOperand(0)->getName())}));
+  //     instr_list->Append(new assem::OperInstr(
+  //         "jmp " + std::string(branch_inst->getOperand(0)->getName()),
+  //         new temp::TempList(), new temp::TempList(), target));
+  //   }
+  // } break;
   case llvm::Instruction::PHI: {
 
     llvm::PHINode *phi_node = llvm::dyn_cast<llvm::PHINode>(&inst);
@@ -413,9 +412,11 @@ void CodeGen::InstrSel(assem::InstrList *instr_list, llvm::Instruction &inst,
                       function_name, bb);
     break;
   }
-  // case llvm::Instruction::Br: {
-  //   break;
-  // }
+  case llvm::Instruction::Br: {
+    this->br_codegen(instr_list, llvm::dyn_cast<llvm::BranchInst>(&inst),
+                     function_name, bb);
+    break;
+  }
   case llvm::Instruction::ICmp: {
     this->icmp_codegen(instr_list, llvm::dyn_cast<llvm::ICmpInst>(&inst));
     break;
@@ -683,7 +684,66 @@ void CodeGen::ret_codegen(assem::InstrList *instr_list, llvm::ReturnInst *inst,
       new assem::Targets(target_labels.release()));
   instr_list->Append(jmp_instr.release());
 }
-void CodeGen::br_codegen(assem::InstrList *instr_list, llvm::LoadInst &inst) {}
+void CodeGen::br_codegen(assem::InstrList *instr_list, llvm::BranchInst *inst,
+                         std::string_view function_name, llvm::BasicBlock *bb) {
+  if (!inst->isConditional()) {
+    // 首先处理没有条件分支的情况
+    // 直接jump
+    // br label %destination => jmp destination_label
+    const std::string destination_label = inst->getOperand(0)->getName().str();
+    std::vector<temp::Label *> targets = {
+        temp::LabelFactory::NamedLabel(destination_label)};
+    assem::Targets *target_labels = new assem::Targets(&targets);
+    // 构建一条 Move 指令，将基本块的地址移动到 phi_temp_
+    assem::MoveInstr *move_instr = new assem::MoveInstr(
+        "movq $" + std::to_string(bb_map_->at(inst->getParent())) + ", `d0",
+        new temp::TempList(phi_temp_), new temp::TempList());
+    assem::OperInstr *jmp_instr =
+        new assem::OperInstr("jmp " + destination_label, new temp::TempList(),
+                             new temp::TempList(), target_labels);
+    instr_list->Append(move_instr);
+    instr_list->Append(jmp_instr);
+    return;
+  }
+  // 有条件跳转
+  std::string src_string = "";
+  temp::TempList *src_list = new temp::TempList();
+  llvm::ConstantInt *src_value =
+      llvm::dyn_cast<llvm::ConstantInt>(inst->getOperand(0));
+  if (src_value) {
+    src_string = "$" + std::to_string(src_value->getSExtValue());
+  }
+  if (IsRsp(inst->getOperand(0), function_name)) {
+    src_string = "`s0";
+    src_list->Append(reg_manager->GetRegister(frame::X64RegManager::Reg::RSP));
+  }
+  if (src_string == "") {
+    src_list->Append(temp_map_->at(inst->getOperand(0)));
+    src_string = "`s0";
+  }
+  auto false_jmp = inst->getOperand(1)->getName();
+  auto true_jmp = inst->getOperand(2)->getName();
+  // cmpq src $1
+  instr_list->Append(new assem::OperInstr(
+      "cmpq " + src_string + ",$1", new temp::TempList(), src_list, nullptr));
+  // 储存当前基本块的地址
+  auto parent = inst->getParent();
+  auto parent_value = bb_map_->at(parent);
+  instr_list->Append(new assem::MoveInstr(
+      "movq $" + std::to_string(parent_value) + ",`d0",
+      new temp::TempList(phi_temp_), new temp::TempList()));
+
+  instr_list->Append(
+      new assem::OperInstr("je " + true_jmp.str(),
+                           new temp::TempList(), new temp::TempList(),
+                           new assem::Targets(new std::vector<temp::Label *>(
+                               {temp::LabelFactory::NamedLabel(true_jmp)}))));
+  instr_list->Append(
+      new assem::OperInstr("jmp " + false_jmp.str(),
+                           new temp::TempList(), new temp::TempList(),
+                           new assem::Targets(new std::vector<temp::Label *>(
+                               {temp::LabelFactory::NamedLabel(false_jmp)}))));
+}
 void CodeGen::icmp_codegen(assem::InstrList *instr_list, llvm::ICmpInst *inst) {
   auto value_1 = inst->getOperand(0);
   auto value_2 = inst->getOperand(1);
