@@ -101,8 +101,11 @@ void MoveInstr::Print(FILE *out, temp::Map *m) const {
 }
 
 void InstrList::Print(FILE *out, temp::Map *m) const {
-  for (auto instr : instr_list_)
+  int i = 0;
+  for (auto instr : instr_list_) {
     instr->Print(out, m);
+    i ++;
+  }
   fprintf(out, "\n");
 }
 
