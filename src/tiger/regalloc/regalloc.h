@@ -13,7 +13,7 @@ namespace ra {
 
 class Result {
 public:
-  temp::Map *coloring_; // 对temp和string做了映射
+  temp::Map *coloring_;
   assem::InstrList *il_;
 
   Result() : coloring_(nullptr), il_(nullptr) {}
@@ -23,15 +23,16 @@ public:
   Result(Result &&result) = delete;
   Result &operator=(const Result &result) = delete;
   Result &operator=(Result &&result) = delete;
-  ~Result();
+  // ~Result();
 };
 
 class RegAllocator {
   /* TODO: Put your lab6 code here */
   public:
     RegAllocator(std::string function_name, std::unique_ptr<cg::AssemInstr> assem_instr);
-    void RegAlloc();
+    void reg_main();
     ~RegAllocator();
+    void LivenessAnalysis();
     void Reset();
     void Build();
     bool AddEdge(live::INodePtr src, live::INodePtr dst);
@@ -56,6 +57,7 @@ class RegAllocator {
     void DeleteRepeatMoves();
     std::unique_ptr<Result> TransferResult();
     temp::Map * AssignRegisters();
+    void cleanup();
   
   private:
     const int K = 15; // registers函数中只含有15个寄存器，但是rsp也要被分配，只是要确保它和谁都不可能合并
@@ -63,7 +65,7 @@ class RegAllocator {
     std::string func_name_;
     int offset = 0; // 这个是全局的，因为spill的node在不断增加，所以offset也在不断增加
     std::unique_ptr<cg::AssemInstr> assem_instr_;
-    live::LiveGraphFactory* live_graph_factory_;
+    live::LiveGraphFactory* liveGraphFactory;
     // live::LiveGraph live_graph_;
     std::unique_ptr<Result> result_; // 存放分配的结果
     live::INodeListPtr *initial;

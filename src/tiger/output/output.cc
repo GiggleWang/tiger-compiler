@@ -155,7 +155,7 @@ void ProcFrag::OutputAssem(FILE *out, OutputPhase phase, bool need_ra) const {
     TigerLog("----====Register allocate====-----\n");
     ra::RegAllocator reg_allocator(body_->getName().str(),
                                    std::move(assem_instr));
-    reg_allocator.RegAlloc();
+    reg_allocator.reg_main();
     allocation = reg_allocator.TransferResult();
     il = allocation->il_;
     color = temp::Map::LayerMap(reg_manager->temp_map_, allocation->coloring_);

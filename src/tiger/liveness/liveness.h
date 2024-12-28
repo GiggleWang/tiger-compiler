@@ -40,14 +40,9 @@ private:
 struct LiveGraph {
   IGraphPtr interf_graph;
   MoveList *moves;
-  INodeList *precolored_;
-  INodeList *initial_;
-  std::map<INodePtr, MoveList> move_list_;
-  std::map<INodePtr, int> degree_;
 
   LiveGraph(IGraphPtr interf_graph, MoveList *moves)
-      : interf_graph(interf_graph), moves(moves),
-  precolored_(new INodeList), initial_(new INodeList) {}
+      : interf_graph(interf_graph), moves(moves) {}
 };
 
 class LiveGraphFactory {
@@ -60,7 +55,6 @@ public:
   void Liveness();
   LiveGraph GetLiveGraph() { return live_graph_; }
   tab::Table<temp::Temp, INode> *GetTempNodeMap() { return temp_node_map_; }
-  void AddEdge(INodePtr src, INodePtr dst);
 
 private:
   fg::FGraphPtr flowgraph_;

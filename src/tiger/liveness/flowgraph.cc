@@ -1,7 +1,5 @@
 #include "tiger/liveness/flowgraph.h"
-#include "tiger/codegen/assem.h"
 #include <iostream>
-#include <utility>
 namespace fg {
 
 void FlowGraphFactory::AssemFlowGraph() {
