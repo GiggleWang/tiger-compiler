@@ -531,69 +531,92 @@ void RegAllocator::FreezeMoves(live::INodePtr u) {
   }
 }
 
+/**
+ * @brief
+    procedure SelectSpill()
+      let m ∈ spillWorklist  // m 是用所喜好的启发式从这个集合中选择出来的
+      // 注意：要避免选择那种由读取前面已溢出的寄存器产生的，活跃范围很小的结点
+      spillWorklist ← spillWorklist \ {m}
+      simplifyWorklist ← simplifyWorklist ∪ {m}
+      FreezeMoves(m)
+ *
+ */
 void RegAllocator::SelectSpill() {
-  std::cerr << "select spill start" << std::endl;
-  // m是使用所喜欢的启发是从spill中拿出来的，但是随便什么方法都行应该（？）
-  auto m = spillWorklist->GetList().front();
-  // 最好是选取一个拥有最长生命周期的节点进行取出：
-  int max_life = -1;
-  int pos = 0, start, end, life;
-
-  for (auto node : spillWorklist->GetList()) {
-    pos = 0;
-    for (auto instr : assem_instr_->GetInstrList()->GetList()) {
+  if (spillWorklist->GetList().empty()) {
+    return;
+  }
+  // 直接选择生命周期最长的节点
+  auto spillNodes = spillWorklist->GetList();
+  // 使用 lambda 表达式计算节点的生命周期
+  auto calculateLife = [this](const auto &node) {
+    int start = -1;
+    int end = -1;
+    int pos = 0;
+    for (const auto &instr : assem_instr_->GetInstrList()->GetList()) {
       if (instr->Def()->Contain(node->NodeInfo())) {
-        start = pos;
+        if (start == -1)
+          start = pos;
       }
       if (instr->Use()->Contain(node->NodeInfo())) {
-        // end = pos;
-        life = pos - start;
-        if (life > max_life) {
-          max_life = life;
-          m = node;
-        }
+        end = pos;
       }
       pos++;
     }
-  }
 
-  spillWorklist->DeleteNode(m);
-  simplifyWorklist->Append(m);
+    if (start == -1 || end == -1)
+      return 0; // 如果没有定义或使用，返回生命周期为0
+    return end - start;
+  };
+  // 使用 std::max_element 配合 lambda 表达式找出生命周期最长的节点
+  auto m = *std::max_element(spillNodes.begin(), spillNodes.end(),
+                             [&](const auto &a, const auto &b) {
+                               return calculateLife(a) < calculateLife(b);
+                             });
+  this->spillWorklist->DeleteNode(m);
+  this->simplifyWorklist->Append(m);
   FreezeMoves(m);
 }
 
+/**
+ * @brief
+    procedure AssignColors()
+      while SelectStack not empty
+        let n = pop(SelectStack)
+        okColors ← {0, ..., K-1}
+        forall w ∈ adjList[n]
+          if GetAlias(w) ∈ (coloredNodes ∪ precolored) then
+            okColors ← okColors \ {color[GetAlias(w)]}
+        if okColors = {} then
+          spilledNodes ← spilledNodes ∪ {n}
+        else
+          coloredNodes ← coloredNodes ∪ {n}
+          let c ∈ okColors
+          color[n] ← c
+        forall n ∈ coalescedNodes
+          color[n] ← color[GetAlias(n)]
+ *
+ */
 void RegAllocator::AssignColors() {
-  std::cerr << "assign colors start" << std::endl;
-  while (!selectStack->GetList().empty()) {
-    // 用这两步模拟pop的操作
-    auto node = selectStack->GetList().front();
-    selectStack->DeleteNode(node);
+  while (!this->selectStack->GetList().empty()) {
+    auto n = this->selectStack->GetList().front();
+    this->selectStack->DeleteNode(n);
     auto ok_colors = reg_manager->Registers();
-    // auto rsp = reg_manager->GetRegister(frame::X64RegManager::Reg::RSP);
-    // ok_colors->Insert(rsp, 7);
-
-    auto adj_nodes = node->Adj();
     auto union_color = coloredNodes->Union(precoloredNodes);
-    for (auto adj_node : adj_nodes->GetList()) {
-      if (union_color->Contain(GetAlias(adj_node))) {
-        ok_colors->Delete(color[GetAlias(adj_node)]);
+    for (auto w : n->Adj()->GetList()) {
+      if (union_color->Contain(GetAlias(w))) {
+        ok_colors->Delete(color[GetAlias(w)]);
       }
     }
     if (ok_colors->GetList().empty()) {
-      spilledNodes->Append(node);
+      this->spilledNodes->Append(n);
     } else {
-      coloredNodes->Append(node);
-      // 任取一个颜色分配给他
-      color[node] = ok_colors->GetList().front();
+      this->coloredNodes->Append(n);
+      color[n] = ok_colors->GetList().front();
     }
-    delete adj_nodes;
-    delete union_color;
   }
-  std::cerr << "ready to find alias" << std::endl;
-  for (auto node : coalescedNodes->GetList()) {
-    color[node] = color[GetAlias(node)];
+  for (auto n : coalescedNodes->GetList()) {
+    color[n] = color[GetAlias(n)];
   }
-  std::cerr << "assign colors end" << std::endl;
 }
 
 void RegAllocator::RewriteProgram() {
