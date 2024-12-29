@@ -1,5 +1,6 @@
 #include "tiger/regalloc/regalloc.h"
 
+#include "tiger/frame/temp.h"
 #include "tiger/liveness/liveness.h"
 #include "tiger/output/logger.h"
 #include <iostream>
@@ -11,7 +12,7 @@ namespace ra {
 /* TODO: Put your lab6 code here */
 RegAllocator::RegAllocator(std::string function_name,
                            std::unique_ptr<cg::AssemInstr> assem_instr) {
-  this->func_name_ = function_name;
+  this->_function_name = function_name;
   this->assem_instr_ = std::move(assem_instr);
   this->result_ = std::make_unique<Result>();
 }
@@ -29,7 +30,7 @@ void RegAllocator::cleanup() {
   delete precoloredNodes;
   delete coalescedNodes;
   delete selectStack;
-  for (auto &[_, moveList] : move_list_map) {
+  for (auto &[_, moveList] : _moveList) {
     delete moveList;
   }
   liveGraphFactory = nullptr;
@@ -45,9 +46,18 @@ void RegAllocator::cleanup() {
   precoloredNodes = nullptr;
   coalescedNodes = nullptr;
   selectStack = nullptr;
-  move_list_map.clear();
+  _moveList.clear();
 }
 RegAllocator::~RegAllocator() { this->cleanup(); }
+
+/**
+ * @brief 将 RegAllocator 对象内部存储的 Result 对象的所有权转移给调用者。
+ *
+ * @return std::unique_ptr<Result>
+ */
+std::unique_ptr<Result> RegAllocator::TransferResult() {
+  return std::move(result_);
+}
 void RegAllocator::Reset() { this->cleanup(); }
 /**
  * @brief
@@ -94,12 +104,47 @@ void RegAllocator::reg_main() {
   this->AssignColors();
   if (spilledNodes->GetList().empty()) {
     // 说明一切正常
-    this->DeleteRepeatMoves();
-    this->result_->coloring_ = AssignRegisters();
+    // 删除重复的move
+    std::vector<assem::Instr *> _delete;
+    auto temp_map = liveGraphFactory->GetTempNodeMap();
+    for (auto instr : assem_instr_->GetInstrList()->GetList()) {
+      if (auto move_instr = dynamic_cast<assem::MoveInstr *>(instr)) {
+        if (move_instr->src_->GetList().size() == 1 &&
+            move_instr->dst_->GetList().size() == 1) {
+          auto src_temp = move_instr->src_->GetList().front();
+          auto dst_temp = move_instr->dst_->GetList().front();
+          if (src_temp ==
+                  reg_manager->GetRegister(frame::X64RegManager::Reg::RSP) ||
+              dst_temp ==
+                  reg_manager->GetRegister(frame::X64RegManager::Reg::RSP))
+            continue;
+          auto src_node = temp_map->Look(src_temp);
+          auto dst_node = temp_map->Look(dst_temp);
+          if (color[src_node] == color[dst_node]) {
+            _delete.push_back(move_instr);
+          }
+        }
+      }
+    }
+
+    for (auto _instr : _delete) {
+      assem_instr_->GetInstrList()->Remove(_instr);
+    }
+    // 分配寄存器
+    auto result = temp::Map::Empty();
+    for (const auto &node : this->liveGraphFactory->GetLiveGraph()
+                                .interf_graph->Nodes()
+                                ->GetList()) {
+      auto reg = reg_manager->temp_map_->Look(color[node]);
+      if (reg) {
+        result->Enter(node->NodeInfo(), reg);
+      }
+    }
+    this->result_->coloring_ = result;
     this->result_->il_ = this->assem_instr_->GetInstrList();
   } else {
     this->RewriteProgram();
-    this->move_list_map.clear();
+    this->_moveList.clear();
     this->reg_main();
   }
 }
@@ -141,7 +186,7 @@ void RegAllocator::Build() {
         moveList->Append(move.first, move.second);
       }
     }
-    move_list_map[node] = moveList;
+    _moveList[node] = moveList;
     degree[node] = node->Degree();
   }
   for (auto reg : registers) {
@@ -198,7 +243,7 @@ live::INodeListPtr RegAllocator::Adjacent(live::INodePtr node) {
         moveList[n] ∩ (activeMoves ∪ worklistMoves)
  */
 live::MoveList *RegAllocator::NodeMoves(live::INodePtr node) {
-  return move_list_map[node]->Intersect(activeMoves->Union(worklistMoves));
+  return _moveList[node]->Intersect(activeMoves->Union(worklistMoves));
 }
 /**
  * @brief 判断节点n是否与任何移动指令相关
@@ -469,7 +514,7 @@ void RegAllocator::Combine(live::INodePtr u, live::INodePtr v) {
   }
   this->coalescedNodes->Append(v);
   alias[v] = u;
-  move_list_map[u] = move_list_map[u]->Union(move_list_map[v]);
+  _moveList[u] = _moveList[u]->Union(_moveList[v]);
   graph::NodeList<temp::Temp> _v;
   _v.Clear();
   _v.Append(v);
@@ -619,162 +664,71 @@ void RegAllocator::AssignColors() {
   }
 }
 
+/**
+ * @brief
+    procedure RewriteProgram()
+        为每一个v ∈ spilledNodes分配一个存储单元，
+        为每一个定值和每一个使用创建一个新的临时变量vi，
+        在程序中（指令序列中）vi的每一个定值之后插入一条存储指令，vi的每一个使用之前插入一条取数指令。
+        将所有的vi放入集合newTemps。
+        spilledNodes ← {}
+        initial ← coloredNodes ∪ coalescedNodes ∪ newTemps
+        coloredNodes ← {}
+        coalescedNodes ← {}
+
+ *
+ */
 void RegAllocator::RewriteProgram() {
-  std::cerr << "rewrite program start" << std::endl;
-  // 为每个溢出的vi分配一个存储单元
-  // 为每一个定值和每一个使用创建一个新的临时变量
-  // 在每一个vi的def指令后加入一个存储指令，在每一个use指令之前插一个load指令
-  // 将所有vi放入newTemps，初始化的时候initial是coloredNodes和要被合并节点和newTemp的并集
-  auto spilled_nodes = spilledNodes->GetList();
-  for (auto node : spilled_nodes) {
-    auto new_temp = temp::TempFactory::NewTemp(); // 要替换的新的临时变量
-    // auto instr = node->Instr();
-    // offset += 8 ; //
-    // 每多一个溢出的node，frameszie就要多8个字节，同样那个变量的存储位置也要加8
-    // auto access = static_cast<frame::InFrameAccess
-    // *>(frame_->AllocLocal(true));
 
-    auto instr_list = assem_instr_->GetInstrList();
-    // 这里需要改成迭代器，否则insert函数会出问题
-    auto instr_iter = instr_list->GetList().begin();
-    auto end = instr_list->GetList().end();
-    for (; instr_iter != end; ++instr_iter) {
-      auto src = (*instr_iter)->Use();
-      auto dst = (*instr_iter)->Def();
-      if (src != nullptr && src->Contain(node->NodeInfo())) {
-        // 如果是使用，首先要将temp进行更换
-        src->Replace(node->NodeInfo(), new_temp);
-        // 然后在使用的指令中也进行替换
-        if (typeid(*(*instr_iter)) == typeid(assem::MoveInstr)) {
-          auto move_instr = static_cast<assem::MoveInstr *>(*instr_iter);
-          move_instr->src_ = src;
-        } else if (typeid(*(*instr_iter)) == typeid(assem::OperInstr)) {
-          auto oper_instr = static_cast<assem::OperInstr *>(*instr_iter);
-          oper_instr->src_ = src;
+  for (auto _spill_node : this->spilledNodes->GetList()) {
+    // 为每一个v ∈ spilledNodes分配一个存储单元
+    auto _spill_tmp = temp::TempFactory::NewTemp();
+    // 为每一个定值和每一个使用创建一个新的临时变量vi，
+    // 在程序中（指令序列中）vi的每一个定值之后插入一条存储指令，vi的每一个使用之前插入一条取数指令。
+    // 将所有的vi放入集合newTemps。
+    for (auto instr_it = assem_instr_->GetInstrList()->GetList().begin();
+         instr_it != assem_instr_->GetInstrList()->GetList().end();
+         instr_it++) {
+      auto &[x, y] = frame_info_map[_function_name];
+      if ((*instr_it)->Use() != nullptr) {
+        if ((*instr_it)->Use()->Contain(_spill_node->NodeInfo())) {
+          (*instr_it)->Use()->Replace(_spill_node->NodeInfo(), _spill_tmp);
+          if (typeid(*(*instr_it)) == typeid(assem::MoveInstr))
+            static_cast<assem::MoveInstr *>(*instr_it)->src_ =
+                (*instr_it)->Use();
+          else if (typeid(*(*instr_it)) == typeid(assem::OperInstr))
+            static_cast<assem::OperInstr *>(*instr_it)->src_ =
+                (*instr_it)->Use();
+          auto assem_str = "movq " + std::string(_function_name) +
+                           "_framesize_local" + std::to_string(x) + "(`s0),`d0";
+          assem_instr_->GetInstrList()->Insert(
+              instr_it,
+              new assem::MoveInstr(assem_str, new temp::TempList(_spill_tmp),
+                                   new temp::TempList(reg_manager->GetRegister(
+                                       frame::X64RegManager::Reg::RSP))));
         }
-        // 然后要在使用前先使用movq将值load到temp中
-        // 此时的地址应该是rsp+framesize+offset
-        // 要先更新framesize_local
-        // if(frame_info_map[func_name_].first == 0) {
-        //     frame_info_map[func_name_].first = -8;
-        // }
-        // 之前一直搞反了，应该是要如果存在在src中，即要被使用，此时要取出，不需要加offset
-        std::string assem;
-        if (frame_info_map[func_name_].first == 0) {
-          assem = "movq `s0, " + std::string(func_name_) + "_framesize_local-" +
-                  std::to_string(frame_info_map[func_name_].first) + ")(%rsp)";
-        }
-        assem = "movq (" + std::string(func_name_) + "_framesize_local" +
-                std::to_string(frame_info_map[func_name_].first) +
-                ")(%rsp), `d0";
-        instr_list->Insert(instr_iter, new assem::MoveInstr(
-                                           assem, new temp::TempList(new_temp),
-                                           new temp::TempList()));
-      }
-      if (dst != nullptr && dst->Contain(node->NodeInfo())) {
-        // 如果是定值，首先要将temp进行更换
-        dst->Replace(node->NodeInfo(), new_temp);
-        // 然后在定值的指令中也进行替换
-        if (typeid(*(*instr_iter)) == typeid(assem::MoveInstr)) {
-          auto move_instr = static_cast<assem::MoveInstr *>(*instr_iter);
-          move_instr->dst_ = dst;
-        } else if (typeid(*(*instr_iter)) == typeid(assem::OperInstr)) {
-          auto oper_instr = static_cast<assem::OperInstr *>(*instr_iter);
-          oper_instr->dst_ = dst;
-        }
-        // 然后要在定值后先使用movq将值store到temp中，即插在下一条指令
-        // 此时的地址应该是rsp+framesize+offset
-
-        // 如果是在dst中，即要被定值，此时要存入，需要加offset
-
-        std::string assem;
-        frame_info_map[func_name_].first -= 8;
-        frame_info_map[func_name_].second += 8;
-        if (frame_info_map[func_name_].first == 0) {
-          assem = "movq " + std::string(func_name_) + "_framesize_local-" +
-                  std::to_string(frame_info_map[func_name_].first) +
-                  ")(%rsp), `d0";
-        }
-        assem = "movq `s0, (" + std::string(func_name_) + "_framesize_local" +
-                std::to_string(frame_info_map[func_name_].first) + ")(%rsp)";
-        instr_list->Insert(std::next(instr_iter),
-                           new assem::MoveInstr(assem, new temp::TempList(),
-                                                new temp::TempList(new_temp)));
-      }
-    }
-  }
-  delete liveGraphFactory;
-  delete simplifyWorklist;
-  delete freezeWorklist;
-  delete spillWorklist;
-  delete activeMoves;
-  delete coalescedMoves;
-  delete constrainedMoves;
-  delete frozenMoves;
-  delete spilledNodes;
-  delete coloredNodes;
-  delete precoloredNodes;
-  delete coalescedNodes;
-  delete selectStack;
-  // 清空move_list_map
-  for (auto iter = move_list_map.begin(); iter != move_list_map.end(); iter++) {
-    delete iter->second;
-  }
-  std::cerr << "rewrite program end" << std::endl;
-}
-
-std::unique_ptr<Result> RegAllocator::TransferResult() {
-  std::cerr << "transfer result" << std::endl;
-  return std::move(result_);
-}
-
-temp::Map *RegAllocator::AssignRegisters() { //根据color进行实际的分配
-  auto result = temp::Map::Empty();
-  auto regs_with_rsp = reg_manager->Registers();
-  // auto rsp = reg_manager->GetRegister(frame::X64RegManager::Reg::RSP);
-  for (auto node :
-       liveGraphFactory->GetLiveGraph().interf_graph->Nodes()->GetList()) {
-    result->Enter(node->NodeInfo(), reg_manager->temp_map_->Look(color[node]));
-  }
-  // regs_with_rsp->Insert(rsp, 7);
-  // for(auto pair:color){
-  //     result->Enter(pair.first->NodeInfo(),
-  //     reg_manager->temp_map_->Look(pair.second));
-  // }
-  return result;
-}
-
-void RegAllocator::DeleteRepeatMoves() {
-  // 遍历整个指令集，将所有mov的前后相同的指令全部删除
-  std::vector<assem::Instr *> instrs_to_delete;
-  auto temp_map = liveGraphFactory->GetTempNodeMap();
-  auto instr_iter = assem_instr_->GetInstrList()->GetList().begin();
-  auto end = assem_instr_->GetInstrList()->GetList().end();
-  auto rsp = reg_manager->GetRegister(frame::X64RegManager::Reg::RSP);
-  for (; instr_iter != end; ++instr_iter) {
-    if (typeid(*(*instr_iter)) == typeid(assem::MoveInstr)) {
-      auto move_instr = static_cast<assem::MoveInstr *>(*instr_iter);
-      auto src = move_instr->src_;
-
-      auto dst = move_instr->dst_;
-      if (src->GetList().size() == 1 && dst->GetList().size() == 1) {
-
-        auto src_temp = src->GetList().front();
-        auto dst_temp = dst->GetList().front();
-        if (src_temp == rsp || dst_temp == rsp) {
-          continue;
-        }
-        auto src_node = temp_map->Look(src_temp);
-        auto dst_node = temp_map->Look(dst_temp);
-        if (color[src_node] == color[dst_node]) {
-          instrs_to_delete.push_back(move_instr);
+        if ((*instr_it)->Def() != nullptr &&
+            (*instr_it)->Def()->Contain(_spill_node->NodeInfo())) {
+          (*instr_it)->Def()->Replace(_spill_node->NodeInfo(), _spill_tmp);
+          if (assem::MoveInstr *move_instr =
+                  dynamic_cast<assem::MoveInstr *>(*instr_it))
+            move_instr->dst_ = (*instr_it)->Def();
+          else if (assem::OperInstr *oper_instr =
+                       dynamic_cast<assem::OperInstr *>(*instr_it))
+            oper_instr->dst_ = (*instr_it)->Def();
+          x -= 8;
+          y += 8;
+          auto assem_str = "movq `s0," + std::string(_function_name) +
+                           "_framesize_local" + std::to_string(x) + "(`d0)";
+          assem_instr_->GetInstrList()->Insert(
+              std::next(instr_it),
+              new assem::MoveInstr(assem_str,
+                                   new temp::TempList(reg_manager->GetRegister(
+                                       frame::X64RegManager::Reg::RSP)),
+                                   new temp::TempList(_spill_tmp)));
         }
       }
     }
-  }
-
-  for (auto instr_to_delete : instrs_to_delete) {
-    assem_instr_->GetInstrList()->Remove(instr_to_delete);
   }
 }
 
